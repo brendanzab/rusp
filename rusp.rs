@@ -106,3 +106,44 @@ pub enum Expr<'self> {
         &'self [&'self Expr<'self>]
     ),
 }
+
+///
+/// A position in a source string
+///
+pub struct Position {
+    line: uint,
+    col: uint,
+}
+
+pub enum ParseResult<'self> {
+    Success(Expr<'self>),
+    Failure {
+        description: &'self str,
+        position: Position,
+    },
+}
+
+///
+/// Performs a recursive decent parse of the source string.
+///
+pub fn parse(src: &str) -> ParseResult {
+    for str::each_char(src) |_| {}
+    fail!()
+}
+
+impl<'self> Expr<'self> {
+    ///
+    /// Evaluates an expression tree
+    ///
+    pub fn eval(&self) -> Expr {
+        match *self {
+            Symbol(_) => fail!(),
+            Literal(_) => fail!(),
+            Quote(_) => fail!(),
+            If(_,_,_) => fail!(),
+            Lambda(_,_) => fail!(),
+            Define(_,_) => fail!(),
+            Call(_,_) => fail!(),
+        }
+    }
+}

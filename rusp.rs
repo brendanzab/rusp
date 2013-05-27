@@ -149,7 +149,7 @@ impl Expr {
             Literal(ref val) => {
                 Ok(val.clone())
             }
-            If(test, conseq, alt) => {
+            If(ref test, ref conseq, ref alt) => {
                 do test.eval(env).chain |val| {
                     match val {
                         Boolean(true) => conseq.eval(env),
@@ -158,7 +158,7 @@ impl Expr {
                     }
                 }
             }
-            Let(ref id, expr) => {
+            Let(ref id, ref expr) => {
                 do expr.eval(env).chain |val| {
                     if env.define(id.clone(), val) {
                         Ok(Empty)

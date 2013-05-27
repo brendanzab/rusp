@@ -64,7 +64,7 @@ impl<'self> Parser<'self> {
         for str::each_char(self.src.slice(self.position, self.src.len())) |c| {
             // TODO: tokenise strings
             match c {
-                '(' | ')' | '|' => {
+                '(' | ')' => {
                     if !seen_token {
                         // we haven't seen a token yet, so use this character
                         self.token_start = self.position;
@@ -134,7 +134,7 @@ impl<'self> Parser<'self> {
     fn parse_ident(&mut self) -> Result<Ident, ParseFailure> {
         do self.peek_token_no_eof().chain |tok| {
             match tok.val {
-                "" | "|" | "(" | ")" => {
+                "" | "(" | ")" => {
                     Err(ParseFailure { position: tok.position, description: ~"empty ident" })
                 }
                 _ => {

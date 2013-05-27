@@ -148,12 +148,12 @@ impl<'self> Parser<'self> {
     fn parse_value_from_token(&mut self, tok: Token)  -> Result<Value, ParseFailure> {
         macro_rules! ret(($val:expr) => {{ self.bump_token(); return Ok($val); }});
         match tok.val {
-            "true" => ret!(Boolean(true)),
-            "false" => ret!(Boolean(false)),
+            "true" => ret!(Bool(true)),
+            "false" => ret!(Bool(false)),
             _ => {}
         }
         match int::from_str(tok.val) {
-            Some(i) => ret!(Integer(i)),
+            Some(i) => ret!(Int(i)),
             None => {}
         }
         match float::from_str(tok.val) {
@@ -201,7 +201,7 @@ impl<'self> Parser<'self> {
             match self.expect_token(")") {
                 Err(err) => Err(err),
                 _ => match self.parse() {
-                    Ok(expr) => Ok(~Literal(Lambda(args, expr, Env::empty()))),
+                    Ok(expr) => Ok(~Literal(Fn(args, expr))),
                     Err(err) => Err(err)
                 }
             }

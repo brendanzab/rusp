@@ -25,11 +25,11 @@ pub struct Ident(~str);
 ///
 #[deriving(Eq, Clone)]
 pub enum Value {
-    Empty,
-    Boolean(bool),
-    Integer(int),
+    Nil,
+    Bool(bool),
+    Int(int),
     Float(float),
-    String(~str),
+    Str(~str),
     ///
     /// Quoted expression
     ///
@@ -45,7 +45,7 @@ pub enum Value {
     /// (fn (<ident>*) <expr>)
     /// ~~~
     ///
-    Lambda(~[Ident], ~Expr, @mut Env),
+    Fn(~[Ident], ~Expr),
 }
 
 ///
@@ -162,16 +162,16 @@ impl Expr {
             If(ref test, ref conseq, ref alt) => {
                 do test.eval(env).chain |val| {
                     match val {
-                        Boolean(true) => conseq.eval(env),
-                        Boolean(false) => alt.eval(env),
-                        _ => Err(fmt!("expected Boolean value, found: %s", val.to_str())),
+                        Bool(true) => conseq.eval(env),
+                        Bool(false) => alt.eval(env),
+                        _ => Err(fmt!("expected boolean expression, found: %s", val.to_str())),
                     }
                 }
             }
             Let(ref id, ref expr) => {
                 do expr.eval(env).chain |val| {
                     if env.define(id.clone(), val) {
-                        Ok(Empty)
+                        Ok(Nil)
                     } else {
                         Err(fmt!("`%s` was already defined in this environment.", id.to_str()))
                     }
@@ -180,8 +180,8 @@ impl Expr {
             Do(ref exprs) => {
                 for uint::range(0, exprs.len() - 1) |i| {
                     match exprs[i].eval(env) {
-                        Ok(Empty) => (),
-                        Ok(val) => return Err(fmt!("expected (), found: %s", val.to_str())),
+                        Ok(Nil) => (),
+                        Ok(val) => return Err(fmt!("expected nil expression, found: %s", val.to_str())),
                         Err(err) => return Err(err),
                     }
                 }
@@ -200,46 +200,46 @@ mod tests {
     #[test]
     fn test_env() {
         let outer = Env::new([
-            (Ident(~"a"), Integer(0)),
+            (Ident(~"a"), Int(0)),
             (Ident(~"b"), Float(1.0)),
-            (Ident(~"c"), String(~"hi")),
+            (Ident(~"c"), Str(~"hi")),
         ], None);
 
         let inner = Env::new([
-            (Ident(~"a"), Integer(3)),
-            (Ident(~"b"), Integer(4)),
+            (Ident(~"a"), Int(3)),
+            (Ident(~"b"), Int(4)),
         ], Some(outer));
 
-        assert_eq!(outer.find(&Ident(~"a")), Some(Integer(0)));
+        assert_eq!(outer.find(&Ident(~"a")), Some(Int(0)));
         assert_eq!(outer.find(&Ident(~"b")), Some(Float(1.0)));
-        assert_eq!(outer.find(&Ident(~"c")), Some(String(~"hi")));
-        assert_eq!(inner.find(&Ident(~"a")), Some(Integer(3)));
-        assert_eq!(inner.find(&Ident(~"b")), Some(Integer(4)));
-        assert_eq!(inner.find(&Ident(~"c")), Some(String(~"hi")));
+        assert_eq!(outer.find(&Ident(~"c")), Some(Str(~"hi")));
+        assert_eq!(inner.find(&Ident(~"a")), Some(Int(3)));
+        assert_eq!(inner.find(&Ident(~"b")), Some(Int(4)));
+        assert_eq!(inner.find(&Ident(~"c")), Some(Str(~"hi")));
     }
 
     #[test]
     fn test_eval_symbol() {
         let env = Env::new([
-            (Ident(~"a"), Integer(0)),
+            (Ident(~"a"), Int(0)),
             (Ident(~"b"), Float(1.0)),
-            (Ident(~"c"), String(~"hi")),
+            (Ident(~"c"), Str(~"hi")),
         ], None);
 
-        assert_eq!(Symbol(Ident(~"a")).eval(env).get(), Integer(0));
+        assert_eq!(Symbol(Ident(~"a")).eval(env).get(), Int(0));
         assert_eq!(Symbol(Ident(~"b")).eval(env).get(), Float(1.0));
-        assert_eq!(Symbol(Ident(~"c")).eval(env).get(), String(~"hi"));
+        assert_eq!(Symbol(Ident(~"c")).eval(env).get(), Str(~"hi"));
         assert!(Symbol(Ident(~"d")).eval(env).is_err());
     }
 
     #[test]
     fn test_eval_literal() {
-        assert_eq!(Literal(Empty).eval(Env::empty()).get(), Empty);
-        assert_eq!(Literal(Integer(1)).eval(Env::empty()).get(), Integer(1));
+        assert_eq!(Literal(Nil).eval(Env::empty()).get(), Nil);
+        assert_eq!(Literal(Int(1)).eval(Env::empty()).get(), Int(1));
         assert_eq!(Literal(Float(1.0)).eval(Env::empty()).get(), Float(1.0));
-        assert_eq!(Literal(String(~"hi")).eval(Env::empty()).get(), String(~"hi"));
-        assert_eq!(Literal(Quote(~Literal(Empty))).eval(Env::empty()).get(),
-                   Quote(~Literal(Empty)));
+        assert_eq!(Literal(Str(~"hi")).eval(Env::empty()).get(), Str(~"hi"));
+        assert_eq!(Literal(Quote(~Literal(Nil))).eval(Env::empty()).get(),
+                   Quote(~Literal(Nil)));
     }
 
     #[test]
@@ -247,48 +247,43 @@ mod tests {
         fn not(test: Value) -> EvalResult {
             If(
                 ~Literal(test),
-                ~Literal(Boolean(false)),
-                ~Literal(Boolean(true))
+                ~Literal(Bool(false)),
+                ~Literal(Bool(true))
             ).eval(Env::empty())
         }
 
-        assert_eq!(not(Boolean(true)).get(), Boolean(false));
-        assert_eq!(not(Boolean(false)).get(), Boolean(true));
-        assert!(not(String(~"hi")).is_err());
-    }
-
-    #[test]
-    fn test_eval_lambda() {
-
+        assert_eq!(not(Bool(true)).get(), Bool(false));
+        assert_eq!(not(Bool(false)).get(), Bool(true));
+        assert!(not(Str(~"hi")).is_err());
     }
 
     #[test]
     fn test_eval_let() {
         let env = Env::empty();
-        assert!(Let(Ident(~"a"), ~Literal(Integer(0))).eval(env).is_ok());
+        assert!(Let(Ident(~"a"), ~Literal(Int(0))).eval(env).is_ok());
         assert!(Let(Ident(~"b"), ~Literal(Float(1.0))).eval(env).is_ok());
-        assert!(Let(Ident(~"c"), ~Literal(String(~"hi"))).eval(env).is_ok());
+        assert!(Let(Ident(~"c"), ~Literal(Str(~"hi"))).eval(env).is_ok());
 
-        assert_eq!(env.find(&Ident(~"a")), Some(Integer(0)));
+        assert_eq!(env.find(&Ident(~"a")), Some(Int(0)));
         assert_eq!(env.find(&Ident(~"b")), Some(Float(1.0)));
-        assert_eq!(env.find(&Ident(~"c")), Some(String(~"hi")));
+        assert_eq!(env.find(&Ident(~"c")), Some(Str(~"hi")));
 
-        assert!(Let(Ident(~"c"), ~Literal(Empty)).eval(env).is_err());
+        assert!(Let(Ident(~"c"), ~Literal(Nil)).eval(env).is_err());
     }
 
     #[test]
     fn test_eval_do() {
-        assert_eq!(Do(~[~Literal(String(~"hi"))]).eval(Env::empty()).get(), String(~"hi"));
+        assert_eq!(Do(~[~Literal(Str(~"hi"))]).eval(Env::empty()).get(), Str(~"hi"));
         assert_eq!(
             Do(~[
-                ~Literal(Empty),
-                ~Do(~[~Literal(Empty)]),
-                ~Literal(String(~"hi"))
+                ~Literal(Nil),
+                ~Do(~[~Literal(Nil)]),
+                ~Literal(Str(~"hi"))
             ]).eval(Env::empty()).get(),
-            String(~"hi")
+            Str(~"hi")
         );
 
-        assert!(Do(~[~Literal(String(~"hi")),~Literal(Empty)]).eval(Env::empty()).is_err());
+        assert!(Do(~[~Literal(Str(~"hi")),~Literal(Nil)]).eval(Env::empty()).is_err());
     }
 
     #[test]

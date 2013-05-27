@@ -9,13 +9,13 @@ impl ToStr for Ident {
 impl ToStr for Value {
     fn to_str(&self) -> ~str {
         match *self {
-            Empty => ~"()",
-            Boolean(b) => b.to_str(),
-            Integer(i) => i.to_str(),
+            Nil => ~"()",
+            Bool(b) => b.to_str(),
+            Int(i) => i.to_str(),
             Float(f)   => f.to_str(),
-            String(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
+            Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
             Quote(ref expr) => fmt!("(quote %s)", expr.to_str()),
-            Lambda(ref ids, ref expr, _) => {
+            Fn(ref ids, ref expr) => {
                 fmt!("(fn (%s) %s)",
                      str::connect(ids.map(|id| id.to_str()), " "),
                      expr.to_str())
@@ -54,9 +54,9 @@ mod tests {
     use super::super::*;
     fn test_pprint() {
         assert_eq!(If(
-            ~Literal(Boolean(true)),
-            ~Call(~Literal(Lambda(~[], ~Literal(Quote(~Symbol(Ident(~"a")))), Env::empty())), ~[]),
-            ~Literal(Boolean(true))
+            ~Literal(Bool(true)),
+            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Symbol(Ident(~"a")))))), ~[]),
+            ~Literal(Bool(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }
 }

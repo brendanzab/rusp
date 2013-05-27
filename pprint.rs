@@ -11,7 +11,7 @@ impl ToStr for Value {
             String(ref s) => fmt!("\"%?\"", str::escape_default(*s)),
             Quote(expr) => fmt!("(quote %s)", expr.to_str()),
             Lambda(ref ids, expr, _env) => {
-                fmt!("|%s| %s",
+                fmt!("(fn (%s) %s)",
                      str::connect(ids.map(|id| id.to_str()), " "),
                      expr.to_str())
             }
@@ -24,14 +24,8 @@ impl ToStr for Expr {
         match *self {
             Symbol(ref id) => id.to_str(),
             Literal(ref val) => val.to_str(),
-            QuoteExpr(ref expr) => fmt!("(quote %s)", expr.to_str()),
             IfExpr(ref pred, ref then, ref els) => fmt!("(if %s %s %s)",
                                             pred.to_str(), then.to_str(), els.to_str()),
-            LambdaExpr(ref ids, ref expr) => {
-                fmt!("|%s| %s",
-                     str::connect(ids.map(|id| id.to_str()), " "),
-                     expr.to_str())
-            }
             LetExpr(ref id, ref expr) => {
                 fmt!("(let %s %s)", id.to_str(), expr.to_str())
             }
@@ -50,8 +44,8 @@ mod tests {
     fn test_pprint() {
         assert_eq!(IfExpr(
             @Literal(Boolean(true)),
-            @CallExpr(@LambdaExpr(~[], @QuoteExpr(@Symbol(Ident(~"a")))), ~[]),
+            @CallExpr(@Literal(Lambda(~[], @Literal(Quote(@Symbol(Ident(~"a")))), Env::empty())), ~[]),
             @Literal(Boolean(true))
-        ).to_str(), ~"(if true (|| (quote a)) true)")
+        ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }
 }

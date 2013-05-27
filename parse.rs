@@ -120,6 +120,14 @@ impl<'self> Parser<'self> {
         }
     }
 
+    fn expect_token(&mut self, tok: &str) -> Result<(), ParseFailure> {
+        if self.eat_token(tok) {
+            Ok(())
+        } else {
+            Err(ParseFailure { position: DUMMY_POS, description: fmt!("Expecting %s", tok)})
+        }
+    }
+
     // Parsing
 
     /// Parse an identifier
@@ -178,31 +186,32 @@ impl<'self> Parser<'self> {
         }
     }
 
-    /// Parse a lambda expression, without the leading '|'
+    /// Parse a lambda expression, without the leading 'fn'
     fn parse_lambda(&mut self) -> Result<@Expr, ParseFailure> {
-        let args = do vec::build |push| {
-            loop {
-                match self.parse_ident() {
-                    Ok(ident) => push(ident),
-                    Err(_) => break,
+        do self.expect_token("(").chain |_| {
+            let args = do vec::build |push| {
+                loop {
+                    match self.parse_ident() {
+                        Ok(ident) => push(ident),
+                        Err(_) => break,
+                    }
+                }
+            };
+
+            match self.expect_token(")") {
+                Err(err) => Err(err),
+                _ => match self.parse() {
+                    Ok(expr) => Ok(@Literal(Lambda(args, expr, Env::empty()))),
+                    Err(err) => Err(err)
                 }
             }
-        };
-
-        if self.eat_token("|") {
-            match self.parse() {
-                Ok(expr) => Ok(@LambdaExpr(args, expr)),
-                Err(err) => Err(err)
-            }
-        } else {
-            Err(ParseFailure { position: DUMMY_POS, description: ~"Expecting '|'"})
         }
     }
 
     /// Parse a quote expression, without the leading 'quote'
     fn parse_quote(&mut self) -> Result<@Expr, ParseFailure> {
         do self.parse().map |&expr| {
-            @QuoteExpr(expr)
+            @Literal(Quote(expr))
         }
     }
 
@@ -235,6 +244,7 @@ impl<'self> Parser<'self> {
             (self.eat_token("if"))    { self.parse_if() }
             (self.eat_token("quote")) { self.parse_quote() }
             (self.eat_token("let"))   { self.parse_def() }
+            (self.eat_token("fn"))    { self.parse_lambda() }
             _ { self.parse_call() }
         )
     }
@@ -247,8 +257,6 @@ impl<'self> Parser<'self> {
             } else {
                 ret
             }
-        } else if self.eat_token("|") {
-            self.parse_lambda()
         } else {
             do self.peek_token_no_eof().chain |tok| {
                 if (tok.val == ")") {
@@ -284,19 +292,19 @@ mod tests {
         test(~"(let a (+ 1 2))");
 
         // the extra space after the lambda?
-        test(~"(if true (|a b| (+ 1 a b) ) (quote (1 2 3)))");
+        test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
     }
 
     #[test]
     fn test_parser_err() {
         fn test(s: ~str) {
-            assert!(Parser::new(s).parse().is_err())
+             assert!(Parser::new(s).parse().is_err());
         }
 
         test(~"(");
         test(~")");
 
-        test(~"(|a b (+ 1 a b))");
+        test(~"(fn (a b (+ 1 a b)))");
         test(~"(if true)");
         test(~"(if true 1 2 3)");
         test(~"(let a)");

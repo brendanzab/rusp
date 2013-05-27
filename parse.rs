@@ -223,6 +223,18 @@ impl<'self> Parser<'self> {
         }
     }
 
+    fn parse_do(&mut self) -> Result<@Expr, ParseFailure> {
+        let mut exprs = ~[];
+        loop {
+            match self.parse() {
+                Ok(expr) => exprs.push(expr),
+                Err(_) if exprs.len() >= 1 => break,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(@Do(exprs))
+    }
+
     fn parse_call(&mut self) -> Result<@Expr, ParseFailure> {
         do self.parse().chain |expr| {
             let args = do vec::build |push| {
@@ -245,6 +257,7 @@ impl<'self> Parser<'self> {
             (self.eat_token("quote")) { self.parse_quote() }
             (self.eat_token("let"))   { self.parse_def() }
             (self.eat_token("fn"))    { self.parse_lambda() }
+            (self.eat_token("do"))    { self.parse_do() }
             _ { self.parse_call() }
         )
     }
@@ -283,12 +296,12 @@ mod tests {
     #[test]
     fn test_parser_ok() {
         fn test(s: ~str) {
-            assert_eq!(Parser::new(s).parse().get().to_str(),
-                       s);
+            assert_eq!(Parser::new(s).parse().get().to_str(), s);
         }
 
         test(~"1");
         test(~"(let a (+ 1 2))");
+        test(~"(do (let a 1) (let b 2) (+ a b))");
 
         // the extra space after the lambda?
         test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
@@ -308,5 +321,6 @@ mod tests {
         test(~"(if true 1 2 3)");
         test(~"(let a)");
         test(~"(let a b c)");
+        test(~"(do)");
     }
 }

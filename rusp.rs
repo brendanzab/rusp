@@ -84,6 +84,15 @@ pub enum Expr {
     /// ~~~
     ///
     Let(Ident, @Expr),
+    /// Do expression
+    ///
+    /// Evaluates each expression in turn, returning the value of the last expression
+    ///
+    /// ~~~
+    /// (do <expr>+)
+    /// ~~~
+    ///
+    Do(~[@Expr]),
     ///
     /// Procedure call
     ///
@@ -154,7 +163,7 @@ impl Expr {
                     match val {
                         Boolean(true) => conseq.eval(env),
                         Boolean(false) => alt.eval(env),
-                        _ => Err(fmt!("expected Boolean value, found: %?", val)),
+                        _ => Err(fmt!("expected Boolean value, found: %s", val.to_str())),
                     }
                 }
             }
@@ -166,6 +175,16 @@ impl Expr {
                         Err(fmt!("`%s` was already defined in this environment.", id.to_str()))
                     }
                 }
+            }
+            Do(ref exprs) => {
+                for uint::range(0, exprs.len() - 1) |i| {
+                    match exprs[i].eval(env) {
+                        Ok(Empty) => (),
+                        Ok(val) => return Err(fmt!("expected (), found: %s", val.to_str())),
+                        Err(err) => return Err(err),
+                    }
+                }
+                exprs[exprs.len() - 1].eval(env)
             }
             Call(_,_) => fail!(),
         }
@@ -254,6 +273,21 @@ mod tests {
         assert_eq!(env.find(&Ident(~"c")), Some(String(~"hi")));
 
         assert!(Let(Ident(~"c"), @Literal(Empty)).eval(env).is_err());
+    }
+
+    #[test]
+    fn test_eval_do() {
+        assert_eq!(Do(~[@Literal(String(~"hi"))]).eval(Env::empty()).get(), String(~"hi"));
+        assert_eq!(
+            Do(~[
+                @Literal(Empty),
+                @Do(~[@Literal(Empty)]),
+                @Literal(String(~"hi"))
+            ]).eval(Env::empty()).get(),
+            String(~"hi")
+        );
+
+        assert!(Do(~[@Literal(String(~"hi")),@Literal(Empty)]).eval(Env::empty()).is_err());
     }
 
     #[test]

@@ -279,7 +279,6 @@ pub fn parse(src: &str) -> Result<@Expr, ParseFailure> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::*;
 
     #[test]
     fn test_parser_ok() {

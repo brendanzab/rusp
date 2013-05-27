@@ -4,6 +4,7 @@
        url = "https://github.com/bjz/rusp")];
 
 #[comment = "A minimal Lisp dialect for Rust."];
+#[license = "ASL2"];
 #[crate_type = "lib"];
 
 // Inspired by Peter Norvig's [Lis.py](http://norvig.com/lispy.html)

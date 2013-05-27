@@ -1,5 +1,10 @@
 use super::*;
 
+impl ToStr for Ident {
+    fn to_str(&self) -> ~str {
+        (**self).clone()
+    }
+}
 
 impl ToStr for Value {
     fn to_str(&self) -> ~str {

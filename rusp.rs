@@ -20,12 +20,6 @@ pub mod pprint;
 #[deriving(Eq, Clone, IterBytes)]
 pub struct Ident(~str);
 
-impl ToStr for Ident {
-    fn to_str(&self) -> ~str {
-        (**self).clone()
-    }
-}
-
 ///
 /// Holds a typed value from the environment
 ///

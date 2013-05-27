@@ -6,10 +6,12 @@
 #[comment = "A minimal Lisp dialect for Rust."];
 #[crate_type = "lib"];
 
+use std::hashmap::*;
+
 ///
 /// Symbol identifier
 ///
-#[deriving(Eq, Clone)]
+#[deriving(Eq, Clone, IterBytes)]
 pub struct Ident(~str);
 
 ///
@@ -17,7 +19,7 @@ pub struct Ident(~str);
 ///
 #[deriving(Eq, Clone)]
 pub enum Value {
-    Str(~str),
+    String(~str),
     Bool(bool),
     Int(int),
     Float(float),
@@ -84,6 +86,43 @@ pub enum Expr {
     /// ~~~
     ///
     Call(Ident, ~[Expr]),
+
+#[deriving(Eq)]
+pub struct Env {
+    values: HashMap<Ident, Value>,
+    outer: Option<@mut Env>,
+}
+
+impl Env {
+    /// Initializes an empty environment
+    pub fn empty() -> Env {
+        Env { values: HashMap::new(), outer: None }
+    }
+
+    /// Initializes a new environment
+    pub fn new(values: &[(Ident, Value)], outer: Option<@mut Env>) -> @mut Env {
+        let env = @mut Env {
+            values: HashMap::new(),
+            outer: outer,
+        };
+        for values.each |&(id, val)| {
+            env.insert(id, val);
+        }
+        env
+    }
+
+    /// Inserts a new identifier/value pair into the environment
+    pub fn insert(&mut self, ident: Ident, val: Value) -> bool {
+        self.values.insert(ident, val)
+    }
+
+    /// Attempts to find a value corresponding to the supplied identifier
+    pub fn find(&self, ident: &Ident) -> Option<Value> {
+        match self.values.find(ident) {
+            Some(val) => Some(val.clone()),
+            None => self.outer.chain(|env| env.find(ident)),
+        }
+    }
 }
 
 ///
@@ -114,16 +153,18 @@ impl Expr {
     ///
     /// Evaluates an expression tree
     ///
-    pub fn eval(&self) -> Expr {
+    pub fn eval(&self, env: &Env) -> Value {
         match *self {
-            Symbol(_) => fail!(),
-            Literal(ref val) => Literal(val.clone()),
+            Symbol(ref id) => env.find(id).expect(
+                fmt!("The value of %? was not defined in this environment", id)
+            ),
+            Literal(ref val) => val.clone(),
             Quote(_) => fail!(),
             If(test, conseq, alt) => {
-                match test.eval() {
-                    Literal(Bool(val)) => {
-                        if val { conseq.eval() }
-                        else { alt.eval() }
+                match test.eval(env) {
+                    Bool(val) => {
+                        if val { conseq.eval(env) }
+                        else   { alt.eval(env)    }
                     }
                     expr => {
                         fail!("expected Boolean expression, found: %?", expr);
@@ -143,14 +184,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_env() {
+        let outer = Env::new([
+            (Ident(~"a"), Int(0)),
+            (Ident(~"b"), Float(1.0)),
+            (Ident(~"c"), String(~"hi")),
+        ], None);
+
+        let inner = Env::new([
+            (Ident(~"a"), Int(3)),
+            (Ident(~"b"), Int(4)),
+        ], Some(outer));
+
+        assert_eq!(outer.find(&Ident(~"a")), Some(Int(0)));
+        assert_eq!(outer.find(&Ident(~"b")), Some(Float(1.0)));
+        assert_eq!(outer.find(&Ident(~"c")), Some(String(~"hi")));
+        assert_eq!(inner.find(&Ident(~"a")), Some(Int(3)));
+        assert_eq!(inner.find(&Ident(~"b")), Some(Int(4)));
+        assert_eq!(inner.find(&Ident(~"c")), Some(String(~"hi")));
+    }
+
+    #[test]
     fn test_eval_if() {
         fn not(test: bool) -> bool {
             match If(
                 @Literal(Bool(test)),
                 @Literal(Bool(false)),
                 @Literal(Bool(true))
-            ).eval() {
-                Literal(Bool(b)) => b,
+            ).eval(&Env::empty()) {
+                Bool(b) => b,
                 _ => fail!("Should not fail."),
             }
         }

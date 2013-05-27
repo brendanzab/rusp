@@ -6,6 +6,8 @@
 #[comment = "A minimal Lisp dialect for Rust."];
 #[crate_type = "lib"];
 
+// Inspired by Peter Norvig's [Lis.py](http://norvig.com/lispy.html)
+
 use std::hashmap::*;
 
 ///
@@ -14,15 +16,24 @@ use std::hashmap::*;
 #[deriving(Eq, Clone, IterBytes)]
 pub struct Ident(~str);
 
+impl ToStr for Ident {
+    fn to_str(&self) -> ~str {
+        (**self).clone()
+    }
+}
+
 ///
 /// Holds a typed value from the environment
 ///
 #[deriving(Eq, Clone)]
 pub enum Value {
-    String(~str),
-    Bool(bool),
-    Int(int),
+    Empty,
+    Boolean(bool),
+    Integer(int),
     Float(float),
+    String(~str),
+    Quote(@Expr),
+    Lambda(~[Ident], @Expr, @mut Env),
 }
 
 ///
@@ -47,13 +58,13 @@ pub enum Expr {
     ///
     Literal(Value),
     ///
-    /// Quotation
+    /// Quoted expression
     ///
     /// ~~~
     /// (quote <expr>)
     /// ~~~
     ///
-    Quote(@Expr),
+    QuoteExpr(@Expr),
     ///
     /// Conditional expression
     ///
@@ -61,7 +72,7 @@ pub enum Expr {
     /// (if <test> <conseq> <alt>)
     /// ~~~
     ///
-    If(@Expr, @Expr, @Expr),
+    IfExpr(@Expr, @Expr, @Expr),
     ///
     /// Anonymous function
     ///
@@ -69,23 +80,24 @@ pub enum Expr {
     /// (|<ident>*| <expr>)
     /// ~~~
     ///
-    Lambda(~[Ident], @Expr),
+    LambdaExpr(~[Ident], @Expr),
     ///
     /// Symbol definition
     ///
     /// ~~~
-    /// (def <ident> <expr>)
+    /// (let <ident> <expr>)
     /// ~~~
     ///
-    Define(Ident, @Expr),
+    LetExpr(Ident, @Expr),
     ///
     /// Procedure call
     ///
     /// ~~~
-    /// (<ident> <expr>+)
+    /// (<expr> <expr>+)
     /// ~~~
     ///
-    Call(Ident, ~[Expr]),
+    CallExpr(@Expr, ~[Expr]),
+}
 
 #[deriving(Eq)]
 pub struct Env {
@@ -95,24 +107,24 @@ pub struct Env {
 
 impl Env {
     /// Initializes an empty environment
-    pub fn empty() -> Env {
-        Env { values: HashMap::new(), outer: None }
+    pub fn empty() -> @mut Env {
+        @mut Env { values: HashMap::new(), outer: None }
     }
 
-    /// Initializes a new environment
+    /// Initializes a new environment with the specified values
     pub fn new(values: &[(Ident, Value)], outer: Option<@mut Env>) -> @mut Env {
         let env = @mut Env {
             values: HashMap::new(),
             outer: outer,
         };
         for values.each |&(id, val)| {
-            env.insert(id, val);
+            env.define(id, val);
         }
         env
     }
 
-    /// Inserts a new identifier/value pair into the environment
-    pub fn insert(&mut self, ident: Ident, val: Value) -> bool {
+    /// Defines a new identifier/value pair
+    pub fn define(&mut self, ident: Ident, val: Value) -> bool {
         self.values.insert(ident, val)
     }
 
@@ -126,7 +138,7 @@ impl Env {
 }
 
 ///
-/// A position in a source string
+/// A position in the source string
 ///
 pub struct Position {
     line: uint,
@@ -149,31 +161,48 @@ pub fn parse(src: &str) -> ParseResult {
     fail!()
 }
 
+pub type EvalResult = Result<Value, ~str>;
+
 impl Expr {
     ///
-    /// Evaluates an expression tree
+    /// Evaluates an expression tree in the supplied environment
     ///
-    pub fn eval(&self, env: &Env) -> Value {
+    pub fn eval(&self, env: @mut Env) -> EvalResult {
         match *self {
-            Symbol(ref id) => env.find(id).expect(
-                fmt!("The value of %? was not defined in this environment", id)
-            ),
-            Literal(ref val) => val.clone(),
-            Quote(_) => fail!(),
-            If(test, conseq, alt) => {
-                match test.eval(env) {
-                    Bool(val) => {
-                        if val { conseq.eval(env) }
-                        else   { alt.eval(env)    }
-                    }
-                    expr => {
-                        fail!("expected Boolean expression, found: %?", expr);
+            Symbol(ref id) =>{
+                match env.find(id) {
+                    Some(val) => Ok(val),
+                    None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
+                }
+            }
+            Literal(ref val) => {
+                Ok(val.clone())
+            }
+            QuoteExpr(expr) => {
+                Ok(Quote(expr))
+            }
+            IfExpr(test, conseq, alt) => {
+                do test.eval(env).chain |val| {
+                    match val {
+                        Boolean(true) => conseq.eval(env),
+                        Boolean(false) => alt.eval(env),
+                        _ => Err(fmt!("expected Boolean value, found: %?", val)),
                     }
                 }
             }
-            Lambda(_,_) => fail!(),
-            Define(_,_) => fail!(),
-            Call(_,_) => fail!(),
+            LambdaExpr(ref ids, expr) => {
+                Ok(Lambda(ids.clone(), expr, Env::new([], Some(env))))
+            }
+            LetExpr(ref id, expr) => {
+                do expr.eval(env).chain |val| {
+                    if env.define(id.clone(), val) {
+                        Ok(Empty)
+                    } else {
+                        Err(fmt!("`%s` was already defined in this environment.", id.to_str()))
+                    }
+                }
+            }
+            CallExpr(_,_) => fail!(),
         }
     }
 }
@@ -186,38 +215,90 @@ mod tests {
     #[test]
     fn test_env() {
         let outer = Env::new([
-            (Ident(~"a"), Int(0)),
+            (Ident(~"a"), Integer(0)),
             (Ident(~"b"), Float(1.0)),
             (Ident(~"c"), String(~"hi")),
         ], None);
 
         let inner = Env::new([
-            (Ident(~"a"), Int(3)),
-            (Ident(~"b"), Int(4)),
+            (Ident(~"a"), Integer(3)),
+            (Ident(~"b"), Integer(4)),
         ], Some(outer));
 
-        assert_eq!(outer.find(&Ident(~"a")), Some(Int(0)));
+        assert_eq!(outer.find(&Ident(~"a")), Some(Integer(0)));
         assert_eq!(outer.find(&Ident(~"b")), Some(Float(1.0)));
         assert_eq!(outer.find(&Ident(~"c")), Some(String(~"hi")));
-        assert_eq!(inner.find(&Ident(~"a")), Some(Int(3)));
-        assert_eq!(inner.find(&Ident(~"b")), Some(Int(4)));
+        assert_eq!(inner.find(&Ident(~"a")), Some(Integer(3)));
+        assert_eq!(inner.find(&Ident(~"b")), Some(Integer(4)));
         assert_eq!(inner.find(&Ident(~"c")), Some(String(~"hi")));
     }
 
     #[test]
-    fn test_eval_if() {
-        fn not(test: bool) -> bool {
-            match If(
-                @Literal(Bool(test)),
-                @Literal(Bool(false)),
-                @Literal(Bool(true))
-            ).eval(&Env::empty()) {
-                Bool(b) => b,
-                _ => fail!("Should not fail."),
-            }
+    fn test_eval_symbol() {
+        let env = Env::new([
+            (Ident(~"a"), Integer(0)),
+            (Ident(~"b"), Float(1.0)),
+            (Ident(~"c"), String(~"hi")),
+        ], None);
+
+        assert_eq!(Symbol(Ident(~"a")).eval(env).get(), Integer(0));
+        assert_eq!(Symbol(Ident(~"b")).eval(env).get(), Float(1.0));
+        assert_eq!(Symbol(Ident(~"c")).eval(env).get(), String(~"hi"));
+        assert!(Symbol(Ident(~"d")).eval(env).is_err());
+    }
+
+    #[test]
+    fn test_eval_literal() {
+        assert_eq!(Literal(Empty).eval(Env::empty()).get(), Empty);
+        assert_eq!(Literal(Integer(1)).eval(Env::empty()).get(), Integer(1));
+        assert_eq!(Literal(Float(1.0)).eval(Env::empty()).get(), Float(1.0));
+        assert_eq!(Literal(String(~"hi")).eval(Env::empty()).get(), String(~"hi"));
+        assert_eq!(Literal(Quote(@Literal(Empty))).eval(Env::empty()).get(),
+                   Quote(@Literal(Empty)));
+    }
+
+    #[test]
+    fn test_eval_quote_expr() {
+        assert_eq!(QuoteExpr(@Literal(String(~"hi"))).eval(Env::empty()).get(),
+                   Quote(@Literal(String(~"hi"))));
+    }
+
+    #[test]
+    fn test_eval_if_expr() {
+        fn not(test: Value) -> EvalResult {
+            IfExpr(
+                @Literal(test),
+                @Literal(Boolean(false)),
+                @Literal(Boolean(true))
+            ).eval(Env::empty())
         }
 
-        assert_eq!(not(true), false);
-        assert_eq!(not(false), true);
+        assert_eq!(not(Boolean(true)).get(), Boolean(false));
+        assert_eq!(not(Boolean(false)).get(), Boolean(true));
+        assert!(not(String(~"hi")).is_err());
+    }
+
+    #[test]
+    fn test_eval_lambda_expr() {
+
+    }
+
+    #[test]
+    fn test_eval_let_expr() {
+        let env = Env::empty();
+        assert!(LetExpr(Ident(~"a"), @Literal(Integer(0))).eval(env).is_ok());
+        assert!(LetExpr(Ident(~"b"), @Literal(Float(1.0))).eval(env).is_ok());
+        assert!(LetExpr(Ident(~"c"), @Literal(String(~"hi"))).eval(env).is_ok());
+
+        assert_eq!(env.find(&Ident(~"a")), Some(Integer(0)));
+        assert_eq!(env.find(&Ident(~"b")), Some(Float(1.0)));
+        assert_eq!(env.find(&Ident(~"c")), Some(String(~"hi")));
+
+        assert!(LetExpr(Ident(~"c"), @Literal(Empty)).eval(env).is_err());
+    }
+
+    #[test]
+    fn test_eval_call_expr() {
+
     }
 }

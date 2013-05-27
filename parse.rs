@@ -168,26 +168,26 @@ impl<'self> Parser<'self> {
         do self.peek_token_no_eof().chain |tok| { self.parse_value_from_token(tok) }
     }
 
-    fn parse_value_or_ident(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_value_or_ident(&mut self) -> Result<~Expr, ParseFailure> {
         match self.parse_value() {
-            Ok(val) => Ok(@Literal(val)),
-            Err(_) => do self.parse_ident().map |&ident| { @Symbol(ident) }
+            Ok(val) => Ok(~Literal(val)),
+            Err(_) => do self.parse_ident().map |&ident| { ~Symbol(ident) }
         }
     }
 
     /// Parse an if expression, without the leading 'if'
-    fn parse_if(&mut self) -> Result<@Expr, ParseFailure> {
-        do self.parse().chain |pred| {
-            do self.parse().chain |then| {
-                do self.parse().map |&els| {
-                    @If(pred, then, els)
+    fn parse_if(&mut self) -> Result<~Expr, ParseFailure> {
+        do self.parse().chain |test| {
+            do self.parse().chain |conseq| {
+                do self.parse().map |&alt| {
+                    ~If(test.clone(), conseq.clone(), alt)
                 }
             }
         }
     }
 
     /// Parse a lambda expression, without the leading 'fn'
-    fn parse_lambda(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_lambda(&mut self) -> Result<~Expr, ParseFailure> {
         do self.expect_token("(").chain |_| {
             let args = do vec::build |push| {
                 loop {
@@ -201,7 +201,7 @@ impl<'self> Parser<'self> {
             match self.expect_token(")") {
                 Err(err) => Err(err),
                 _ => match self.parse() {
-                    Ok(expr) => Ok(@Literal(Lambda(args, expr, Env::empty()))),
+                    Ok(expr) => Ok(~Literal(Lambda(args, expr, Env::empty()))),
                     Err(err) => Err(err)
                 }
             }
@@ -209,21 +209,21 @@ impl<'self> Parser<'self> {
     }
 
     /// Parse a quote expression, without the leading 'quote'
-    fn parse_quote(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_quote(&mut self) -> Result<~Expr, ParseFailure> {
         do self.parse().map |&expr| {
-            @Literal(Quote(expr))
+            ~Literal(Quote(expr))
         }
     }
 
-    fn parse_def(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_def(&mut self) -> Result<~Expr, ParseFailure> {
         do self.parse_ident().chain |ident| {
             do self.parse().map |&expr| {
-                @Let(copy ident, expr)
+                ~Let(copy ident, expr)
             }
         }
     }
 
-    fn parse_do(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_do(&mut self) -> Result<~Expr, ParseFailure> {
         let mut exprs = ~[];
         loop {
             match self.parse() {
@@ -232,10 +232,10 @@ impl<'self> Parser<'self> {
                 Err(err) => return Err(err),
             }
         }
-        Ok(@Do(exprs))
+        Ok(~Do(exprs))
     }
 
-    fn parse_call(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_call(&mut self) -> Result<~Expr, ParseFailure> {
         do self.parse().chain |expr| {
             let args = do vec::build |push| {
                 loop {
@@ -246,12 +246,12 @@ impl<'self> Parser<'self> {
                 }
             };
 
-            Ok(@Call(expr, args))
+            Ok(~Call(expr, args))
         }
     }
 
     /// Parse the interior of an S-expr
-    fn parse_parened(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse_parened(&mut self) -> Result<~Expr, ParseFailure> {
         cond! (
             (self.eat_token("if"))    { self.parse_if() }
             (self.eat_token("quote")) { self.parse_quote() }
@@ -262,7 +262,7 @@ impl<'self> Parser<'self> {
         )
     }
 
-    fn parse(&mut self) -> Result<@Expr, ParseFailure> {
+    fn parse(&mut self) -> Result<~Expr, ParseFailure> {
         if self.eat_token("(") {
             let ret = self.parse_parened();
             if !self.eat_token(")") {
@@ -285,7 +285,7 @@ impl<'self> Parser<'self> {
 ///
 /// Performs a recursive decent parse of the source string.
 ///
-pub fn parse(src: &str) -> Result<@Expr, ParseFailure> {
+pub fn parse(src: &str) -> Result<~Expr, ParseFailure> {
     Parser::new(src).parse()
 }
 

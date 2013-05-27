@@ -36,7 +36,7 @@ pub enum Value {
     /// (quote <expr>)
     /// ~~~
     ///
-    Quote(@Expr),
+    Quote(~Expr),
     ///
     /// Anonymous function
     ///
@@ -44,7 +44,7 @@ pub enum Value {
     /// (fn (<ident>*) <expr>)
     /// ~~~
     ///
-    Lambda(~[Ident], @Expr, @mut Env),
+    Lambda(~[Ident], ~Expr, @mut Env),
 }
 
 ///
@@ -75,7 +75,7 @@ pub enum Expr {
     /// (if <test> <conseq> <alt>)
     /// ~~~
     ///
-    If(@Expr, @Expr, @Expr),
+    If(~Expr, ~Expr, ~Expr),
     ///
     /// Symbol definition
     ///
@@ -83,7 +83,7 @@ pub enum Expr {
     /// (let <ident> <expr>)
     /// ~~~
     ///
-    Let(Ident, @Expr),
+    Let(Ident, ~Expr),
     /// Do expression
     ///
     /// Evaluates each expression in turn, returning the value of the last expression
@@ -92,7 +92,7 @@ pub enum Expr {
     /// (do <expr>+)
     /// ~~~
     ///
-    Do(~[@Expr]),
+    Do(~[~Expr]),
     ///
     /// Procedure call
     ///
@@ -100,7 +100,7 @@ pub enum Expr {
     /// (<expr> <expr>+)
     /// ~~~
     ///
-    Call(@Expr, ~[@Expr]),
+    Call(~Expr, ~[~Expr]),
 }
 
 #[deriving(Eq)]
@@ -237,17 +237,17 @@ mod tests {
         assert_eq!(Literal(Integer(1)).eval(Env::empty()).get(), Integer(1));
         assert_eq!(Literal(Float(1.0)).eval(Env::empty()).get(), Float(1.0));
         assert_eq!(Literal(String(~"hi")).eval(Env::empty()).get(), String(~"hi"));
-        assert_eq!(Literal(Quote(@Literal(Empty))).eval(Env::empty()).get(),
-                   Quote(@Literal(Empty)));
+        assert_eq!(Literal(Quote(~Literal(Empty))).eval(Env::empty()).get(),
+                   Quote(~Literal(Empty)));
     }
 
     #[test]
     fn test_eval_if() {
         fn not(test: Value) -> EvalResult {
             If(
-                @Literal(test),
-                @Literal(Boolean(false)),
-                @Literal(Boolean(true))
+                ~Literal(test),
+                ~Literal(Boolean(false)),
+                ~Literal(Boolean(true))
             ).eval(Env::empty())
         }
 
@@ -264,30 +264,30 @@ mod tests {
     #[test]
     fn test_eval_let() {
         let env = Env::empty();
-        assert!(Let(Ident(~"a"), @Literal(Integer(0))).eval(env).is_ok());
-        assert!(Let(Ident(~"b"), @Literal(Float(1.0))).eval(env).is_ok());
-        assert!(Let(Ident(~"c"), @Literal(String(~"hi"))).eval(env).is_ok());
+        assert!(Let(Ident(~"a"), ~Literal(Integer(0))).eval(env).is_ok());
+        assert!(Let(Ident(~"b"), ~Literal(Float(1.0))).eval(env).is_ok());
+        assert!(Let(Ident(~"c"), ~Literal(String(~"hi"))).eval(env).is_ok());
 
         assert_eq!(env.find(&Ident(~"a")), Some(Integer(0)));
         assert_eq!(env.find(&Ident(~"b")), Some(Float(1.0)));
         assert_eq!(env.find(&Ident(~"c")), Some(String(~"hi")));
 
-        assert!(Let(Ident(~"c"), @Literal(Empty)).eval(env).is_err());
+        assert!(Let(Ident(~"c"), ~Literal(Empty)).eval(env).is_err());
     }
 
     #[test]
     fn test_eval_do() {
-        assert_eq!(Do(~[@Literal(String(~"hi"))]).eval(Env::empty()).get(), String(~"hi"));
+        assert_eq!(Do(~[~Literal(String(~"hi"))]).eval(Env::empty()).get(), String(~"hi"));
         assert_eq!(
             Do(~[
-                @Literal(Empty),
-                @Do(~[@Literal(Empty)]),
-                @Literal(String(~"hi"))
+                ~Literal(Empty),
+                ~Do(~[~Literal(Empty)]),
+                ~Literal(String(~"hi"))
             ]).eval(Env::empty()).get(),
             String(~"hi")
         );
 
-        assert!(Do(~[@Literal(String(~"hi")),@Literal(Empty)]).eval(Env::empty()).is_err());
+        assert!(Do(~[~Literal(String(~"hi")),~Literal(Empty)]).eval(Env::empty()).is_err());
     }
 
     #[test]

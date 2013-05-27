@@ -54,9 +54,9 @@ mod tests {
     use super::super::*;
     fn test_pprint() {
         assert_eq!(If(
-            @Literal(Boolean(true)),
-            @Call(@Literal(Lambda(~[], @Literal(Quote(@Symbol(Ident(~"a")))), Env::empty())), ~[]),
-            @Literal(Boolean(true))
+            ~Literal(Boolean(true)),
+            ~Call(~Literal(Lambda(~[], ~Literal(Quote(~Symbol(Ident(~"a")))), Env::empty())), ~[]),
+            ~Literal(Boolean(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }
 }

@@ -13,7 +13,6 @@ use std::hashmap::*;
 pub mod parse;
 pub mod pprint;
 
-
 ///
 /// Symbol identifier
 ///
@@ -42,7 +41,7 @@ pub enum Value {
     /// Anonymous function
     ///
     /// ~~~
-    /// (|<ident>*| <expr>)
+    /// (fn (<ident>*) <expr>)
     /// ~~~
     ///
     Lambda(~[Ident], @Expr, @mut Env),

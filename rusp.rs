@@ -10,17 +10,15 @@
 
 use std::hashmap::*;
 
+pub mod parse;
+pub mod pprint;
+
+
 ///
 /// Symbol identifier
 ///
 #[deriving(Eq, Clone, IterBytes)]
 pub struct Ident(~str);
-
-impl ToStr for Ident {
-    fn to_str(&self) -> ~str {
-        (**self).clone()
-    }
-}
 
 ///
 /// Holds a typed value from the environment
@@ -32,7 +30,21 @@ pub enum Value {
     Integer(int),
     Float(float),
     String(~str),
+    ///
+    /// Quoted expression
+    ///
+    /// ~~~
+    /// (quote <expr>)
+    /// ~~~
+    ///
     Quote(@Expr),
+    ///
+    /// Anonymous function
+    ///
+    /// ~~~
+    /// (|<ident>*| <expr>)
+    /// ~~~
+    ///
     Lambda(~[Ident], @Expr, @mut Env),
 }
 
@@ -58,14 +70,6 @@ pub enum Expr {
     ///
     Literal(Value),
     ///
-    /// Quoted expression
-    ///
-    /// ~~~
-    /// (quote <expr>)
-    /// ~~~
-    ///
-    QuoteExpr(@Expr),
-    ///
     /// Conditional expression
     ///
     /// ~~~
@@ -73,14 +77,6 @@ pub enum Expr {
     /// ~~~
     ///
     IfExpr(@Expr, @Expr, @Expr),
-    ///
-    /// Anonymous function
-    ///
-    /// ~~~
-    /// (|<ident>*| <expr>)
-    /// ~~~
-    ///
-    LambdaExpr(~[Ident], @Expr),
     ///
     /// Symbol definition
     ///
@@ -96,7 +92,7 @@ pub enum Expr {
     /// (<expr> <expr>+)
     /// ~~~
     ///
-    CallExpr(@Expr, ~[Expr]),
+    CallExpr(@Expr, ~[@Expr]),
 }
 
 #[deriving(Eq)]
@@ -137,30 +133,6 @@ impl Env {
     }
 }
 
-///
-/// A position in the source string
-///
-pub struct Position {
-    line: uint,
-    col: uint,
-}
-
-pub enum ParseResult {
-    Success(Expr),
-    Failure {
-        description: ~str,
-        position: Position,
-    },
-}
-
-///
-/// Performs a recursive decent parse of the source string.
-///
-pub fn parse(src: &str) -> ParseResult {
-    for str::each_char(src) |_| {}
-    fail!()
-}
-
 pub type EvalResult = Result<Value, ~str>;
 
 impl Expr {
@@ -178,9 +150,6 @@ impl Expr {
             Literal(ref val) => {
                 Ok(val.clone())
             }
-            QuoteExpr(expr) => {
-                Ok(Quote(expr))
-            }
             IfExpr(test, conseq, alt) => {
                 do test.eval(env).chain |val| {
                     match val {
@@ -189,9 +158,6 @@ impl Expr {
                         _ => Err(fmt!("expected Boolean value, found: %?", val)),
                     }
                 }
-            }
-            LambdaExpr(ref ids, expr) => {
-                Ok(Lambda(ids.clone(), expr, Env::new([], Some(env))))
             }
             LetExpr(ref id, expr) => {
                 do expr.eval(env).chain |val| {
@@ -259,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_eval_quote_expr() {
-        assert_eq!(QuoteExpr(@Literal(String(~"hi"))).eval(Env::empty()).get(),
+        assert_eq!(Literal(Quote(@Literal(String(~"hi")))).eval(Env::empty()).get(),
                    Quote(@Literal(String(~"hi"))));
     }
 

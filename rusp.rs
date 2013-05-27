@@ -9,15 +9,15 @@
 ///
 /// Symbol identifier
 ///
-#[deriving(Eq)]
-struct Ident<'self>(&'self str);
+#[deriving(Eq, Clone)]
+pub struct Ident(~str);
 
 ///
 /// Holds a typed value from the environment
 ///
-#[deriving(Eq)]
-enum Value<'self> {
-    Str(&'self str),
+#[deriving(Eq, Clone)]
+pub enum Value {
+    Str(~str),
     Bool(bool),
     Int(int),
     Float(float),
@@ -26,10 +26,8 @@ enum Value<'self> {
 ///
 /// Primitive language expressions
 ///
-/// The bottom turtles.
-///
-#[deriving(Eq)]
-pub enum Expr<'self> {
+#[deriving(Eq, Clone)]
+pub enum Expr {
     ///
     /// Symbol reference
     ///
@@ -37,9 +35,7 @@ pub enum Expr<'self> {
     /// <ident>
     /// ~~~
     ///
-    Symbol(
-        Ident<'self>
-    ),
+    Symbol(Ident),
     ///
     /// Constant literal
     ///
@@ -47,9 +43,7 @@ pub enum Expr<'self> {
     /// <val>
     /// ~~~
     ///
-    Literal(
-        Value<'self>
-    ),
+    Literal(Value),
     ///
     /// Quotation
     ///
@@ -57,9 +51,7 @@ pub enum Expr<'self> {
     /// (quote <expr>)
     /// ~~~
     ///
-    Quote(
-        &'self Expr<'self>
-    ),
+    Quote(@Expr),
     ///
     /// Conditional expression
     ///
@@ -67,11 +59,7 @@ pub enum Expr<'self> {
     /// (if <test> <conseq> <alt>)
     /// ~~~
     ///
-    If(
-        &'self Expr<'self>,
-        &'self Expr<'self>,
-        &'self Expr<'self>
-    ),
+    If(@Expr, @Expr, @Expr),
     ///
     /// Anonymous function
     ///
@@ -79,10 +67,7 @@ pub enum Expr<'self> {
     /// (|<ident>*| <expr>)
     /// ~~~
     ///
-    Lambda(
-        &'self [Ident<'self>],
-        &'self Expr<'self>
-    ),
+    Lambda(~[Ident], @Expr),
     ///
     /// Symbol definition
     ///
@@ -90,10 +75,7 @@ pub enum Expr<'self> {
     /// (def <ident> <expr>)
     /// ~~~
     ///
-    Define(
-        Ident<'self>,
-        &'self Expr<'self>
-    ),
+    Define(Ident, @Expr),
     ///
     /// Procedure call
     ///
@@ -101,10 +83,7 @@ pub enum Expr<'self> {
     /// (<ident> <expr>+)
     /// ~~~
     ///
-    Call(
-        Ident<'self>,
-        &'self [&'self Expr<'self>]
-    ),
+    Call(Ident, ~[Expr]),
 }
 
 ///
@@ -115,10 +94,10 @@ pub struct Position {
     col: uint,
 }
 
-pub enum ParseResult<'self> {
-    Success(Expr<'self>),
+pub enum ParseResult {
+    Success(Expr),
     Failure {
-        description: &'self str,
+        description: ~str,
         position: Position,
     },
 }
@@ -131,19 +110,52 @@ pub fn parse(src: &str) -> ParseResult {
     fail!()
 }
 
-impl<'self> Expr<'self> {
+impl Expr {
     ///
     /// Evaluates an expression tree
     ///
     pub fn eval(&self) -> Expr {
         match *self {
             Symbol(_) => fail!(),
-            Literal(_) => fail!(),
+            Literal(ref val) => Literal(val.clone()),
             Quote(_) => fail!(),
-            If(_,_,_) => fail!(),
+            If(test, conseq, alt) => {
+                match test.eval() {
+                    Literal(Bool(val)) => {
+                        if val { conseq.eval() }
+                        else { alt.eval() }
+                    }
+                    expr => {
+                        fail!("expected Boolean expression, found: %?", expr);
+                    }
+                }
+            }
             Lambda(_,_) => fail!(),
             Define(_,_) => fail!(),
             Call(_,_) => fail!(),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_eval_if() {
+        fn not(test: bool) -> bool {
+            match If(
+                @Literal(Bool(test)),
+                @Literal(Bool(false)),
+                @Literal(Bool(true))
+            ).eval() {
+                Literal(Bool(b)) => b,
+                _ => fail!("Should not fail."),
+            }
+        }
+
+        assert_eq!(not(true), false);
+        assert_eq!(not(false), true);
     }
 }

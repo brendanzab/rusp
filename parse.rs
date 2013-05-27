@@ -180,7 +180,7 @@ impl<'self> Parser<'self> {
         do self.parse().chain |pred| {
             do self.parse().chain |then| {
                 do self.parse().map |&els| {
-                    @IfExpr(pred, then, els)
+                    @If(pred, then, els)
                 }
             }
         }
@@ -218,7 +218,7 @@ impl<'self> Parser<'self> {
     fn parse_def(&mut self) -> Result<@Expr, ParseFailure> {
         do self.parse_ident().chain |ident| {
             do self.parse().map |&expr| {
-                @LetExpr(copy ident, expr)
+                @Let(copy ident, expr)
             }
         }
     }
@@ -234,7 +234,7 @@ impl<'self> Parser<'self> {
                 }
             };
 
-            Ok(@CallExpr(expr, args))
+            Ok(@Call(expr, args))
         }
     }
 

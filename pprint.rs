@@ -29,12 +29,12 @@ impl ToStr for Expr {
         match *self {
             Symbol(ref id) => id.to_str(),
             Literal(ref val) => val.to_str(),
-            IfExpr(ref pred, ref then, ref els) => fmt!("(if %s %s %s)",
+            If(ref pred, ref then, ref els) => fmt!("(if %s %s %s)",
                                             pred.to_str(), then.to_str(), els.to_str()),
-            LetExpr(ref id, ref expr) => {
+            Let(ref id, ref expr) => {
                 fmt!("(let %s %s)", id.to_str(), expr.to_str())
             }
-            CallExpr(ref expr, ref exprs) => {
+            Call(ref expr, ref exprs) => {
                 fmt!("(%s %s)",
                      expr.to_str(),
                      str::connect(exprs.map(|e| e.to_str()), " "))
@@ -47,9 +47,9 @@ impl ToStr for Expr {
 mod tests {
     use super::super::*;
     fn test_pprint() {
-        assert_eq!(IfExpr(
+        assert_eq!(If(
             @Literal(Boolean(true)),
-            @CallExpr(@Literal(Lambda(~[], @Literal(Quote(@Symbol(Ident(~"a")))), Env::empty())), ~[]),
+            @Call(@Literal(Lambda(~[], @Literal(Quote(@Symbol(Ident(~"a")))), Env::empty())), ~[]),
             @Literal(Boolean(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }

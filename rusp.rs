@@ -10,6 +10,10 @@
 
 use std::hashmap::*;
 
+pub mod parse;
+pub mod pprint;
+
+
 ///
 /// Symbol identifier
 ///
@@ -96,7 +100,7 @@ pub enum Expr {
     /// (<expr> <expr>+)
     /// ~~~
     ///
-    CallExpr(@Expr, ~[Expr]),
+    CallExpr(@Expr, ~[@Expr]),
 }
 
 #[deriving(Eq)]
@@ -135,30 +139,6 @@ impl Env {
             None => self.outer.chain(|env| env.find(ident)),
         }
     }
-}
-
-///
-/// A position in the source string
-///
-pub struct Position {
-    line: uint,
-    col: uint,
-}
-
-pub enum ParseResult {
-    Success(Expr),
-    Failure {
-        description: ~str,
-        position: Position,
-    },
-}
-
-///
-/// Performs a recursive decent parse of the source string.
-///
-pub fn parse(src: &str) -> ParseResult {
-    for str::each_char(src) |_| {}
-    fail!()
 }
 
 pub type EvalResult = Result<Value, ~str>;

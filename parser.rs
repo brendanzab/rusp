@@ -33,7 +33,7 @@ pub struct Parser<'self> {
     src: &'self str
 }
 
-impl<'self> Parser<'self> {
+pub impl<'self> Parser<'self> {
     fn new<'r>(src: &'r str) -> Parser<'r> {
         Parser {
             token_start: 0,
@@ -257,6 +257,10 @@ impl<'self> Parser<'self> {
             (self.eat_token("def"))   { self.parse_def() }
             (self.eat_token("fn"))    { self.parse_lambda() }
             (self.eat_token("do"))    { self.parse_do() }
+            // this is a silly hack
+            (self.peek_token().map_default(false,
+                                           |x| x.val == ")")) { Ok(~Unit) }
+
             _ { self.parse_apply() }
         )
     }
@@ -279,13 +283,6 @@ impl<'self> Parser<'self> {
             }
         }
     }
-}
-
-///
-/// Performs a recursive decent parse of the source string.
-///
-pub fn parse(src: &str) -> Result<~Value, ParseFailure> {
-    Parser::new(src).parse()
 }
 
 #[cfg(test)]

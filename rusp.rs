@@ -177,13 +177,24 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_literal() {
+    fn test_unit() {
         assert_eq!(Env::empty().eval(&Unit).get(), Unit);
+    }
+
+    #[test]
+    fn test_atoms() {
         assert_eq!(Env::empty().eval(&Int(1)).get(), Int(1));
         assert_eq!(Env::empty().eval(&Float(1.0)).get(), Float(1.0));
         assert_eq!(Env::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
-        assert_eq!(Env::empty().eval(&Quote(~Symbol(~"x"))).get(), Symbol(~"x"));
+    }
 
+    #[test]
+    fn test_quote() {
+        assert_eq!(Env::empty().eval(&Quote(~Symbol(~"x"))).get(), Symbol(~"x"));
+    }
+
+    #[test]
+    fn test_symbol() {
         let env = Env::empty();
         env.define(~"a", Int(0));
         env.define(~"b", Float(1.0));
@@ -196,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_if() {
+    fn test_if() {
         fn not(test: Value) -> EvalResult {
             Env::empty().eval(&If(~test, ~Bool(false), ~Bool(true)))
         }
@@ -207,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_let() {
+    fn test_let() {
         let env = Env::empty();
         assert!(env.eval(&Def(~"a", ~Int(0))).is_ok());
         assert!(env.eval(&Def(~"b", ~Float(1.0))).is_ok());
@@ -221,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_do() {
+    fn test_do() {
         assert_eq!(Env::empty().eval(&Do(~[~Str(~"hi")])).get(), Str(~"hi"));
         assert_eq!(
             Env::empty().eval(&Do(~[
@@ -236,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_call() {
+    fn test_apply() {
 
     }
 }

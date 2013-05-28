@@ -1,2 +1,5 @@
 *.dylib
 *.dSYM
+*.so
+repl
+rusp

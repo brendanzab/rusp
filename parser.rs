@@ -33,7 +33,7 @@ pub struct Parser<'self> {
     src: &'self str
 }
 
-impl<'self> Parser<'self> {
+pub impl<'self> Parser<'self> {
     fn new<'r>(src: &'r str) -> Parser<'r> {
         Parser {
             token_start: 0,
@@ -283,13 +283,6 @@ impl<'self> Parser<'self> {
             }
         }
     }
-}
-
-///
-/// Performs a recursive decent parse of the source string.
-///
-pub fn parse(src: &str) -> Result<~Value, ParseFailure> {
-    Parser::new(src).parse()
 }
 
 #[cfg(test)]

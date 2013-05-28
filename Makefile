@@ -5,9 +5,12 @@ clean:
 	rm repl
 	rm librusp*
 
-check: *.rs
+check: check-rusp check-repl
+
+check-rusp: pprint.rs rusp.rs parser.rs
 	rustc --test rusp.rs
 	./rusp
+check-repl: repl.rs lib
 	rustc --test -L . repl.rs
 	./repl
 
@@ -16,5 +19,5 @@ repl: repl.rs lib
 
 lib: librusp*
 
-librusp*: pprint.rs rusp.rs parse.rs
+librusp*: pprint.rs rusp.rs parser.rs
 	rustc rusp.rs

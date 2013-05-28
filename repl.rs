@@ -2,13 +2,12 @@ extern mod rusp;
 
 fn main() {
     let mut stored = ~"";
-    print("Rusp Repl
-> ");
-    let env = rusp::Env::empty();
+    print("Rusp Repl\n> ");
+    let env = rusp::Rusp::empty();
 
     for io::stdin().each_line |line| {
         stored.push_str(line);
-        let continue_line = match rusp::parse::parse(stored) {
+        let continue_line = match rusp::parse(stored) {
             Ok(ex) => {
                 // print the AST, since that's useful for debugging
                 println(fmt!("AST: %?" ex));

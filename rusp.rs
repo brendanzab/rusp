@@ -27,8 +27,6 @@ pub type Ident = ~str;
 /// Holds a typed value
 #[deriving(Eq, Clone)]
 pub enum Value {
-    /// The unit type: `()`
-    Unit,
     /// A boolean value: either `true` or `false`
     Bool(bool),
     /// An integer value
@@ -114,7 +112,6 @@ impl Rusp {
     /// Evaluates a Rusp expression in the environment
     pub fn eval(&mut self, value: &Value) -> EvalResult {
         match *value {
-            Unit => Ok(Unit),
             Bool(b) => Ok(Bool(b)),
             Int(i) => Ok(Int(i)),
             Float(f) => Ok(Float(f)),
@@ -147,7 +144,7 @@ impl Rusp {
             Def(ref id, ref value) => {
                 do self.eval(*value).chain |val| {
                     if self.define(id.clone(), val) {
-                        Ok(Unit)
+                        Ok(List(~[]))
                     } else {
                         Err(fmt!("`%s` was already defined in this environment.", id.to_str()))
                     }
@@ -156,7 +153,7 @@ impl Rusp {
             Do(ref exprs) => {
                 for uint::range(0, exprs.len() - 1) |i| {
                     match self.eval(exprs[i]) {
-                        Ok(Unit) => (),
+                        Ok(List(ref l)) if l.is_empty() => (),
                         Ok(v) => return Err(fmt!("expected unit expression, found: %s", v.to_str())),
                         Err(e) => return Err(e),
                     }
@@ -196,11 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn test_unit() {
-        assert_eq!(Rusp::empty().eval(&Unit).get(), Unit);
-    }
-
-    #[test]
     fn test_atoms() {
         assert_eq!(Rusp::empty().eval(&Int(1)).get(), Int(1));
         assert_eq!(Rusp::empty().eval(&Float(1.0)).get(), Float(1.0));
@@ -209,6 +201,7 @@ mod tests {
 
     #[test]
     fn test_list() {
+        assert_eq!(Rusp::empty().eval(&List(~[])).get(), List(~[]));
         assert_eq!(
             Rusp::empty().eval(&List(~[~Str(~"hi"), ~Quote(~Symbol(~"x")), ~Int(1)])).get(),
             List(~[~Str(~"hi"), ~Symbol(~"x"), ~Int(1)])
@@ -255,7 +248,7 @@ mod tests {
         assert_eq!(env.find(&~"b"), Some(Float(1.0)));
         assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
 
-        assert!(env.eval(&Def(~"c", ~Unit)).is_err());
+        assert!(env.eval(&Def(~"c", ~List(~[]))).is_err());
     }
 
     #[test]
@@ -263,14 +256,14 @@ mod tests {
         assert_eq!(Rusp::empty().eval(&Do(~[~Str(~"hi")])).get(), Str(~"hi"));
         assert_eq!(
             Rusp::empty().eval(&Do(~[
-                ~Unit,
-                ~Do(~[~Unit]),
+                ~List(~[]),
+                ~Do(~[~List(~[])]),
                 ~Str(~"hi")
             ])).get(),
             Str(~"hi")
         );
 
-        assert!(Rusp::empty().eval(&Do(~[~Str(~"hi"), ~Unit])).is_err());
+        assert!(Rusp::empty().eval(&Do(~[~Str(~"hi"), ~List(~[])])).is_err());
     }
 
     #[test]

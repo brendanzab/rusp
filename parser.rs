@@ -274,7 +274,7 @@ pub impl<'self> Parser<'self> {
             (self.eat_token("do"))    { self.parse_do() }
             // this is a silly hack
             (self.peek_token().map_default(false,
-                                           |x| x.val == ")")) { Ok(~Unit) }
+                                           |x| x.val == ")")) { Ok(~List(~[])) }
 
             _ { self.parse_apply() }
         )

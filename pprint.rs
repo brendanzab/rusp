@@ -3,12 +3,11 @@ use super::*;
 impl ToStr for Value {
     fn to_str(&self) -> ~str {
         match *self {
-            Unit => ~"()",
             Bool(b) => b.to_str(),
             Int(i) => i.to_str(),
             Float(f) => f.to_str(),
             List(ref vals) => {
-                fmt!("(list %s)", str::connect(vals.map(|val| val.to_str()), " "))
+                fmt!("(list%s)", vals.foldl(~"", |&x, val| fmt!("%s %s", x, val.to_str())))
             }
             Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
             Symbol(ref id) => id.to_str(),

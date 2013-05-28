@@ -37,6 +37,8 @@ pub enum Value {
     Float(float),
     /// String value: `"<value>"`
     Str(~str),
+    /// Hetrogeneous list: `(list <val>*)`
+    List(~[~Value]),
     /// Symbol reference: `<ident>`
     Symbol(Ident),
     /// Conditional expression: `(if <test> <conseq> <alt>)`
@@ -116,10 +118,20 @@ impl Rusp {
             Bool(b) => Ok(Bool(b)),
             Int(i) => Ok(Int(i)),
             Float(f) => Ok(Float(f)),
+            List(ref vals) => {
+                let mut evaled = ~[];
+                for vals.each |&val| {
+                    match self.eval(val) {
+                        Ok(v) => evaled.push(~v),
+                        Err(e) => return Err(e),
+                    }
+                }
+                Ok(List(evaled))
+            }
             Str(ref s) => Ok(Str(s.to_owned())),
-            Symbol(ref id) =>{
+            Symbol(ref id) => {
                 match self.find(id) {
-                    Some(val) => Ok(val),
+                    Some(v) => Ok(v),
                     None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
                 }
             }
@@ -145,8 +157,8 @@ impl Rusp {
                 for uint::range(0, exprs.len() - 1) |i| {
                     match self.eval(exprs[i]) {
                         Ok(Unit) => (),
-                        Ok(val) => return Err(fmt!("expected unit expression, found: %s", val.to_str())),
-                        Err(err) => return Err(err),
+                        Ok(v) => return Err(fmt!("expected unit expression, found: %s", v.to_str())),
+                        Err(e) => return Err(e),
                     }
                 }
                 self.eval(exprs[exprs.len() - 1])
@@ -193,6 +205,14 @@ mod tests {
         assert_eq!(Rusp::empty().eval(&Int(1)).get(), Int(1));
         assert_eq!(Rusp::empty().eval(&Float(1.0)).get(), Float(1.0));
         assert_eq!(Rusp::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
+    }
+
+    #[test]
+    fn test_list() {
+        assert_eq!(
+            Rusp::empty().eval(&List(~[~Str(~"hi"), ~Quote(~Symbol(~"x")), ~Int(1)])).get(),
+            List(~[~Str(~"hi"), ~Symbol(~"x"), ~Int(1)])
+        );
     }
 
     #[test]

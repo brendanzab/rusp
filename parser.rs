@@ -176,6 +176,20 @@ pub impl<'self> Parser<'self> {
     }
 
     /// Parse an if expression, without the leading 'if'
+    fn parse_list(&mut self) -> Result<~Value, ParseFailure> {
+        Ok(~List(
+            do vec::build |push| {
+                loop {
+                    match self.parse() {
+                        Ok(val) => push(val),
+                        Err(_) => break,
+                    }
+                }
+            }
+        ))
+    }
+
+    /// Parse an if expression, without the leading 'if'
     fn parse_if(&mut self) -> Result<~Value, ParseFailure> {
         do self.parse().chain |test| {
             do self.parse().chain |conseq| {
@@ -252,6 +266,7 @@ pub impl<'self> Parser<'self> {
     /// Parse the interior of an S-expr
     fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
         cond! (
+            (self.eat_token("list"))  { self.parse_list() }
             (self.eat_token("if"))    { self.parse_if() }
             (self.eat_token("quote")) { self.parse_quote() }
             (self.eat_token("def"))   { self.parse_def() }
@@ -298,6 +313,7 @@ mod tests {
         test(~"1");
         test(~"(def a (+ 1 2))");
         test(~"(do (def a 1) (def b 2) (+ a b))");
+        test(~"(list (1 2) 3 (+ 4 5))");
 
         // the extra space after the lambda?
         test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");

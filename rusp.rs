@@ -75,6 +75,17 @@ impl Clone for Value {
     }
 }
 
+impl Value {
+    pub fn is_unit(&self)  -> bool { match *self { Unit     => true, _ => false } }
+    pub fn is_bool(&self)  -> bool { match *self { Bool(_)  => true, _ => false } }
+    pub fn is_int(&self)   -> bool { match *self { Int(_)   => true, _ => false } }
+    pub fn is_float(&self) -> bool { match *self { Float(_) => true, _ => false } }
+    pub fn is_str(&self)   -> bool { match *self { Str(_)   => true, _ => false } }
+    pub fn is_quote(&self) -> bool { match *self { Quote(_) => true, _ => false } }
+    pub fn is_rust(&self)  -> bool { match *self { Rust(_)  => true, _ => false } }
+    pub fn is_fn(&self)    -> bool { match *self { Fn(_,_)  => true, _ => false } }
+}
+
 ///
 /// Primitive language expressions
 ///
@@ -86,8 +97,8 @@ pub enum Expr {
     Literal(Value),
     /// Conditional expression: `(if <test> <conseq> <alt>)`
     If(~Expr, ~Expr, ~Expr),
-    /// Symbol definition: `(let <ident> <expr>)`
-    Let(Ident, ~Expr),
+    /// Symbol definition: `(def <ident> <expr>)`
+    Def(Ident, ~Expr),
     /// Do expression: `(do <expr>+)`
     Do(~[~Expr]),
     /// Procedure call: `(<expr> <expr>+)`
@@ -153,7 +164,7 @@ impl Env {
                     }
                 }
             }
-            Let(ref id, ref expr) => {
+            Def(ref id, ref expr) => {
                 do self.eval(*expr).chain |val| {
                     if self.define(id.clone(), val) {
                         Ok(Unit)
@@ -173,6 +184,22 @@ impl Env {
                 self.eval(exprs[exprs.len() - 1])
             }
             Call(_,_) => fail!("Not yet implemented"),
+            // Call(ref proc, ref params) => {
+            //     do proc.eval(env).chain |val| {
+            //         match val {
+            //             Fn(vals, expr) => {
+            //                 if params.len() != vals.len() {
+            //                     Err(fmt!("not enough arguments were supplied"))
+            //                 } else {
+            //                     let inner_env = Env::new([], env);
+            //                     for params.eachi |param| {
+            //                     }
+            //                 }
+            //             }
+            //             _ => Err(fmt!("expected function expression, found %s", val.to_str())),
+            //         }
+            //     }
+            // }
         }
     }
 }
@@ -242,15 +269,15 @@ mod tests {
     #[test]
     fn test_eval_let() {
         let env = Env::empty();
-        assert!(env.eval(&Let(~"a", ~Literal(Int(0)))).is_ok());
-        assert!(env.eval(&Let(~"b", ~Literal(Float(1.0)))).is_ok());
-        assert!(env.eval(&Let(~"c", ~Literal(Str(~"hi")))).is_ok());
+        assert!(env.eval(&Def(~"a", ~Literal(Int(0)))).is_ok());
+        assert!(env.eval(&Def(~"b", ~Literal(Float(1.0)))).is_ok());
+        assert!(env.eval(&Def(~"c", ~Literal(Str(~"hi")))).is_ok());
 
         assert_eq!(env.find(&~"a"), Some(Int(0)));
         assert_eq!(env.find(&~"b"), Some(Float(1.0)));
         assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
 
-        assert!(env.eval(&Let(~"c", ~Literal(Unit))).is_err());
+        assert!(env.eval(&Def(~"c", ~Literal(Unit))).is_err());
     }
 
     #[test]

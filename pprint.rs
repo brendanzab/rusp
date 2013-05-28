@@ -28,8 +28,8 @@ impl ToStr for Expr {
                 fmt!("(if %s %s %s)",
                      pred.to_str(), conseq.to_str(), alt.to_str())
             }
-            Let(ref id, ref expr) => {
-                fmt!("(let %s %s)", id.to_str(), expr.to_str())
+            Def(ref id, ref expr) => {
+                fmt!("(def %s %s)", id.to_str(), expr.to_str())
             }
             Do(ref exprs) => {
                 fmt!("(do %s)",

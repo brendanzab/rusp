@@ -218,7 +218,7 @@ impl<'self> Parser<'self> {
     fn parse_def(&mut self) -> Result<~Expr, ParseFailure> {
         do self.parse_ident().chain |ident| {
             do self.parse().map |&expr| {
-                ~Let(copy ident, expr)
+                ~Def(copy ident, expr)
             }
         }
     }
@@ -255,7 +255,7 @@ impl<'self> Parser<'self> {
         cond! (
             (self.eat_token("if"))    { self.parse_if() }
             (self.eat_token("quote")) { self.parse_quote() }
-            (self.eat_token("let"))   { self.parse_def() }
+            (self.eat_token("def"))   { self.parse_def() }
             (self.eat_token("fn"))    { self.parse_lambda() }
             (self.eat_token("do"))    { self.parse_do() }
             _ { self.parse_call() }
@@ -300,8 +300,8 @@ mod tests {
         }
 
         test(~"1");
-        test(~"(let a (+ 1 2))");
-        test(~"(do (let a 1) (let b 2) (+ a b))");
+        test(~"(def a (+ 1 2))");
+        test(~"(do (def a 1) (def b 2) (+ a b))");
 
         // the extra space after the lambda?
         test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
@@ -319,8 +319,8 @@ mod tests {
         test(~"(fn (a b (+ 1 a b)))");
         test(~"(if true)");
         test(~"(if true 1 2 3)");
-        test(~"(let a)");
-        test(~"(let a b c)");
+        test(~"(def a)");
+        test(~"(def a b c)");
         test(~"(do)");
     }
 }

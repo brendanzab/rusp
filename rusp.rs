@@ -18,6 +18,7 @@ pub mod pprint;
 pub type Ident = ~str;
 
 /// Holds a typed value
+#[deriving(Eq, Clone)]
 pub enum Value {
     /// The unit type: `()`
     Unit,
@@ -40,60 +41,26 @@ pub enum Value {
     /// Quoted expression: `(quote <expr>)`
     Quote(~Value),
     /// A Rust function
-    Rust(~fn(params: ~[Ident], env: &Env) -> Value),
+    Rust(RustFn),
     /// Anonymous function: `(fn (<ident>*) <expr>)`
     Lambda(~[Ident], ~Value),
     /// Function application: `(<expr> <expr>+)`
     Apply(~Value, ~[~Value]),
 }
 
-impl Eq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        macro_rules! cmp_other(
-            ($cmp_pat:pat => $cmp_expr:expr) => (
-                match *other { $cmp_pat => $cmp_expr, _ => false, }
-            )
-        );
-        match *self {
-            Unit => cmp_other!(Unit => true),
-            Bool(b0) => cmp_other!(Bool(b1) => b0 == b1),
-            Int(i0) => cmp_other!(Int(i1) => i0 == i1),
-            Float(f0) => cmp_other!(Float(f1) => f0 == f1),
-            If(ref t0, ref c0, ref a0) => cmp_other!(If(ref t1, ref c1, ref a1) =>
-                (*t0 == *t1) && (*c0 == *c1) && (*a0 == *a1)),
-            Def(ref id0, ref exp0) => cmp_other!(Def(ref id1, ref exp1) =>
-                (*id0 == *id1) && (*exp0 == *exp1)),
-            Do(ref exprs0) => cmp_other!(Do(ref exprs1) => (*exprs0 == *exprs1)),
-            Symbol(ref ident0) => cmp_other!(Symbol(ref ident1) => *ident0 == *ident1),
-            Str(ref s0) => cmp_other!(Str(ref s1) => *s0 == *s1),
-            Quote(ref expr0) => cmp_other!(Quote(ref expr1) => *expr0 == *expr1),
-            Rust(_) => cmp_other!(Rust(_) => fail!("Cannot test equality of Rust functions (yet?).")),
-            Lambda(ref params0, ref expr0) => cmp_other!(Lambda(ref params1, ref expr1) =>
-                (*params0 == *params1) && (*expr0 == *expr1)),
-            Apply(ref expr0, ref params0) => cmp_other!(Apply(ref expr1, ref params1) =>
-                (*expr0 == *expr1) && (*params0 == *params1)),
-        }
+/// Workaround for `deriving` not working for rust closures
+pub struct RustFn(@fn(params: ~[Ident], env: &Env) -> Value);
+
+impl Eq for RustFn {
+    fn eq(&self, _: &RustFn) -> bool {
+        fail!("Cannot test equality of Rust functions (yet?).");
     }
-    fn ne(&self, other: &Value) -> bool { !self.eq(other) }
+    fn ne(&self, other: &RustFn) -> bool { !self.eq(other) }
 }
 
-impl Clone for Value {
-    fn clone(&self) -> Value {
-        match *self {
-            Unit => Unit,
-            Bool(b) => Bool(b),
-            Int(i) => Int(i),
-            Float(f) => Float(f),
-            Str(ref s) => Str(s.clone()),
-            If(ref t, ref c, ref a) => If(t.clone(), c.clone(), a.clone()),
-            Def(ref ident, ref expr) => Def(ident.clone(), expr.clone()),
-            Do(ref exprs) => Do(exprs.clone()),
-            Symbol(ref ident) => Symbol(ident.clone()),
-            Quote(ref expr) => Quote(expr.clone()),
-            Rust(_) => fail!("Cannot test the equality of Rust functions (yet?)"),
-            Lambda(ref params, ref expr) => Lambda(params.clone(), expr.clone()),
-            Apply(ref expr, ref params) => Apply(expr.clone(), params.clone()),
-        }
+impl Clone for RustFn {
+    fn clone(&self) -> RustFn {
+        fail!("Cannot clone Rust functions (yet?)");
     }
 }
 
@@ -215,7 +182,7 @@ mod tests {
         assert_eq!(Env::empty().eval(&Int(1)).get(), Int(1));
         assert_eq!(Env::empty().eval(&Float(1.0)).get(), Float(1.0));
         assert_eq!(Env::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
-        assert_eq!(Env::empty().eval(&Quote(~Unit)).get(), Quote(~Unit));
+        assert_eq!(Env::empty().eval(&Quote(~Symbol(~"x"))).get(), Symbol(~"x"));
 
         let env = Env::empty();
         env.define(~"a", Int(0));

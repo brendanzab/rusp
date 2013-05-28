@@ -175,8 +175,8 @@ pub impl<'self> Parser<'self> {
         }
     }
 
-    /// Parse an if expression, without the leading 'if'
-    fn parse_list(&mut self) -> Result<~Value, ParseFailure> {
+    /// Parse the interior of an S-expr
+    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
         Ok(~List(
             do vec::build |push| {
                 loop {
@@ -187,97 +187,6 @@ pub impl<'self> Parser<'self> {
                 }
             }
         ))
-    }
-
-    /// Parse an if expression, without the leading 'if'
-    fn parse_if(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().chain |test| {
-            do self.parse().chain |conseq| {
-                do self.parse().map |&alt| {
-                    ~If(test.clone(), conseq.clone(), alt)
-                }
-            }
-        }
-    }
-
-    /// Parse a lambda expression, without the leading 'fn'
-    fn parse_lambda(&mut self) -> Result<~Value, ParseFailure> {
-        do self.expect_token("(").chain |_| {
-            let args = do vec::build |push| {
-                loop {
-                    match self.parse_ident() {
-                        Ok(ident) => push(ident),
-                        Err(_) => break,
-                    }
-                }
-            };
-
-            match self.expect_token(")") {
-                Err(err) => Err(err),
-                _ => match self.parse() {
-                    Ok(expr) => Ok(~Lambda(args, expr)),
-                    Err(err) => Err(err)
-                }
-            }
-        }
-    }
-
-    /// Parse a quote expression, without the leading 'quote'
-    fn parse_quote(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().map |&expr| {
-            ~Quote(expr)
-        }
-    }
-
-    fn parse_def(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse_ident().chain |ident| {
-            do self.parse().map |&expr| {
-                ~Def(copy ident, expr)
-            }
-        }
-    }
-
-    fn parse_do(&mut self) -> Result<~Value, ParseFailure> {
-        let mut exprs = ~[];
-        loop {
-            match self.parse() {
-                Ok(expr) => exprs.push(expr),
-                Err(_) if exprs.len() >= 1 => break,
-                Err(err) => return Err(err),
-            }
-        }
-        Ok(~Do(exprs))
-    }
-
-    fn parse_apply(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().chain |expr| {
-            let args = do vec::build |push| {
-                loop {
-                    match self.parse() {
-                        Ok(expr) => push(expr),
-                        Err(_) => break
-                    }
-                }
-            };
-            Ok(~Apply(expr, args))
-        }
-    }
-
-    /// Parse the interior of an S-expr
-    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
-        cond! (
-            (self.eat_token("list"))  { self.parse_list() }
-            (self.eat_token("if"))    { self.parse_if() }
-            (self.eat_token("quote")) { self.parse_quote() }
-            (self.eat_token("def"))   { self.parse_def() }
-            (self.eat_token("fn"))    { self.parse_lambda() }
-            (self.eat_token("do"))    { self.parse_do() }
-            // this is a silly hack
-            (self.peek_token().map_default(false,
-                                           |x| x.val == ")")) { Ok(~List(~[])) }
-
-            _ { self.parse_apply() }
-        )
     }
 
     fn parse(&mut self) -> Result<~Value, ParseFailure> {

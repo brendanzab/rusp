@@ -35,7 +35,7 @@ impl ToStr for Expr {
                 fmt!("(do %s)",
                      str::connect(exprs.map(|e| e.to_str()), " "))
             }
-            Call(ref expr, ref exprs) => {
+            Apply(ref expr, ref exprs) => {
                 fmt!("(%s %s)",
                      expr.to_str(),
                      str::connect(exprs.map(|e| e.to_str()), " "))
@@ -50,7 +50,7 @@ mod tests {
     fn test_pprint() {
         assert_eq!(If(
             ~Literal(Bool(true)),
-            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Literal(Symbol(~"a")))))), ~[]),
+            ~Apply(~Literal(Fn(~[], ~Literal(Quote(~Literal(Symbol(~"a")))))), ~[]),
             ~Literal(Bool(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }

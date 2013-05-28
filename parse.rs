@@ -235,7 +235,7 @@ impl<'self> Parser<'self> {
         Ok(~Do(exprs))
     }
 
-    fn parse_call(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_apply(&mut self) -> Result<~Expr, ParseFailure> {
         do self.parse().chain |expr| {
             let args = do vec::build |push| {
                 loop {
@@ -245,8 +245,7 @@ impl<'self> Parser<'self> {
                     }
                 }
             };
-
-            Ok(~Call(expr, args))
+            Ok(~Apply(expr, args))
         }
     }
 
@@ -258,7 +257,7 @@ impl<'self> Parser<'self> {
             (self.eat_token("def"))   { self.parse_def() }
             (self.eat_token("fn"))    { self.parse_lambda() }
             (self.eat_token("do"))    { self.parse_do() }
-            _ { self.parse_call() }
+            _ { self.parse_apply() }
         )
     }
 

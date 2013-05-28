@@ -103,8 +103,8 @@ pub enum Expr {
     Def(Ident, ~Expr),
     /// Do expression: `(do <expr>+)`
     Do(~[~Expr]),
-    /// Procedure call: `(<expr> <expr>+)`
-    Call(~Expr, ~[~Expr]),
+    /// Function application: `(<expr> <expr>+)`
+    Apply(~Expr, ~[~Expr]),
 }
 
 #[deriving(Eq)]
@@ -187,8 +187,8 @@ impl Env {
                 }
                 self.eval(exprs[exprs.len() - 1])
             }
-            Call(_,_) => fail!("Not yet implemented"),
-            // Call(ref proc, ref params) => {
+            Apply(_,_) => fail!("Not yet implemented"),
+            // Apply(ref proc, ref params) => {
             //     do proc.eval(env).chain |val| {
             //         match val {
             //             Fn(vals, expr) => {

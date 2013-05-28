@@ -8,6 +8,7 @@ impl ToStr for Value {
             Int(i) => i.to_str(),
             Float(f) => f.to_str(),
             Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
+            Symbol(ref id) => id.to_str(),
             Quote(ref expr) => fmt!("(quote %s)", expr.to_str()),
             Rust(_) => ~"(extern)", // Not sure about this?
             Fn(ref ids, ref expr) => {
@@ -22,7 +23,6 @@ impl ToStr for Value {
 impl ToStr for Expr {
     fn to_str(&self) -> ~str {
         match *self {
-            Symbol(ref id) => id.to_str(),
             Literal(ref val) => val.to_str(),
             If(ref pred, ref conseq, ref alt) => {
                 fmt!("(if %s %s %s)",
@@ -50,7 +50,7 @@ mod tests {
     fn test_pprint() {
         assert_eq!(If(
             ~Literal(Bool(true)),
-            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Symbol(~"a"))))), ~[]),
+            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Literal(Symbol(~"a")))))), ~[]),
             ~Literal(Bool(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }

@@ -171,7 +171,7 @@ impl<'self> Parser<'self> {
     fn parse_value_or_ident(&mut self) -> Result<~Expr, ParseFailure> {
         match self.parse_value() {
             Ok(val) => Ok(~Literal(val)),
-            Err(_) => do self.parse_ident().map |&ident| { ~Symbol(ident) }
+            Err(_) => do self.parse_ident().map |&ident| { ~Literal(Symbol(ident)) }
         }
     }
 

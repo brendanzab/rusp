@@ -29,6 +29,8 @@ pub enum Value {
     Float(float),
     /// String value: `"<value>"`
     Str(~str),
+    /// Symbol reference: `<ident>`
+    Symbol(Ident),
     /// Quoted expression: `(quote <expr>)`
     Quote(~Expr),
     /// A Rust function
@@ -49,6 +51,7 @@ impl Eq for Value {
             Bool(b0) => cmp_other!(Bool(b1) => b0 == b1),
             Int(i0) => cmp_other!(Int(i1) => i0 == i1),
             Float(f0) => cmp_other!(Float(f1) => f0 == f1),
+            Symbol(ref ident0) => cmp_other!(Symbol(ref ident1) => *ident0 == *ident1),
             Str(ref s0) => cmp_other!(Str(ref s1) => *s0 == *s1),
             Quote(ref expr0) => cmp_other!(Quote(ref expr1) => *expr0 == *expr1),
             Rust(_) => cmp_other!(Rust(_) => fail!("Cannot test equality of Rust functions (yet?).")),
@@ -68,6 +71,7 @@ impl Clone for Value {
             Int(i) => Int(i),
             Float(f) => Float(f),
             Str(ref s) => Str(s.clone()),
+            Symbol(ref ident) => Symbol(ident.clone()),
             Quote(ref expr) => Quote(expr.clone()),
             Rust(_) => fail!("Cannot test the equality of Rust functions (yet?)"),
             Fn(ref params, ref expr) => Fn(params.clone(), expr.clone()),
@@ -91,8 +95,6 @@ impl Value {
 ///
 #[deriving(Eq, Clone)]
 pub enum Expr {
-    /// Symbol reference: `<ident>`
-    Symbol(Ident),
     /// Constant literal: `<val>`
     Literal(Value),
     /// Conditional expression: `(if <test> <conseq> <alt>)`
@@ -146,14 +148,16 @@ impl Env {
     /// Evaluates a Rusp expression in the environment
     pub fn eval(&mut self, expr: &Expr) -> EvalResult {
         match *expr {
-            Symbol(ref id) =>{
-                match self.find(id) {
-                    Some(val) => Ok(val),
-                    None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
-                }
-            }
             Literal(ref val) => {
-                Ok(val.clone())
+                match *val {
+                    Symbol(ref id) =>{
+                        match self.find(id) {
+                            Some(val) => Ok(val),
+                            None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
+                        }
+                    }
+                    _ => Ok(val.clone()),
+                }
             }
             If(ref test, ref conseq, ref alt) => {
                 do self.eval(*test).chain |val| {
@@ -229,19 +233,6 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_symbol() {
-        let env = Env::empty();
-        env.define(~"a", Int(0));
-        env.define(~"b", Float(1.0));
-        env.define(~"c", Str(~"hi"));
-
-        assert_eq!(env.eval(&Symbol(~"a")).get(), Int(0));
-        assert_eq!(env.eval(&Symbol(~"b")).get(), Float(1.0));
-        assert_eq!(env.eval(&Symbol(~"c")).get(), Str(~"hi"));
-        assert!(env.eval(&Symbol(~"d")).is_err());
-    }
-
-    #[test]
     fn test_eval_literal() {
         assert_eq!(Env::empty().eval(&Literal(Unit)).get(), Unit);
         assert_eq!(Env::empty().eval(&Literal(Int(1))).get(), Int(1));
@@ -249,6 +240,16 @@ mod tests {
         assert_eq!(Env::empty().eval(&Literal(Str(~"hi"))).get(), Str(~"hi"));
         assert_eq!(Env::empty().eval(&Literal(Quote(~Literal(Unit)))).get(),
                    Quote(~Literal(Unit)));
+
+        let env = Env::empty();
+        env.define(~"a", Int(0));
+        env.define(~"b", Float(1.0));
+        env.define(~"c", Str(~"hi"));
+
+        assert_eq!(env.eval(&Literal(Symbol(~"a"))).get(), Int(0));
+        assert_eq!(env.eval(&Literal(Symbol(~"b"))).get(), Float(1.0));
+        assert_eq!(env.eval(&Literal(Symbol(~"c"))).get(), Str(~"hi"));
+        assert!(env.eval(&Literal(Symbol(~"d"))).is_err());
     }
 
     #[test]

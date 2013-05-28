@@ -7,20 +7,36 @@ pub struct Position {
     line: uint,
     col: uint,
 }
-static DUMMY_POS: Position = Position { line: 0, col: 0 };
 
 pub struct ParseFailure {
     description: ~str,
     position: Position,
 }
 
+impl ParseFailure {
+    fn err<T>(descr: ~str, pos: Position) -> Result<T, ParseFailure> {
+        Err(ParseFailure { description: descr, position: pos })
+    }
+    fn eof<T>(pos: Position) -> Result<T, ParseFailure> {
+        ParseFailure::err(~"Unexpected EOF", pos)
+    }
+}
+
+#[deriving(Eq)]
+enum Tok<'self> {
+    LPAREN, RPAREN,
+    LIT(&'self str),
+    STRING(&'self str),
+    EOF
+}
+
 struct Token<'self> {
-    val: &'self str,
+    val: Tok<'self>,
     position: Position,
 }
 
 impl<'self> Token<'self> {
-    fn new<'r>(val: &'r str, position: Position) -> Token<'r> {
+    fn new<'r>(val: Tok<'r>, position: Position) -> Token<'r> {
         Token { val: val, position: position }
     }
 }
@@ -28,48 +44,77 @@ impl<'self> Token<'self> {
 
 pub struct Parser<'self> {
     token_start: uint,
-    position: uint,
-    token: Option<Token<'self>>,
+    src_position: uint,
+    position: Position,
+    token: Result<Token<'self>, ParseFailure>,
     src: &'self str
 }
 
 pub impl<'self> Parser<'self> {
     fn new<'r>(src: &'r str) -> Parser<'r> {
+        let pos = Position { line: 1, col: 0 };
         Parser {
             token_start: 0,
-            position: 0,
-            token: None,
+            src_position: 0,
+            position: pos,
+            token: ParseFailure::err(~"No input", pos),
             src: src
         }
     }
 
     // Tokenising
 
-    fn load_token(&mut self) {
+    /// Load the next token in to `self.token`. If it is currently
+    /// `Ok(..)`, then it is preserved or overwritten depending on the
+    /// value of `overwrite`.
+    fn load_token(&mut self, overwrite: bool) {
+        macro_rules! set_token (
+            ($tok:expr) => {{
+                self.token = Ok(Token::new($tok, self.position));
+                self.token_start = self.src_position;
+                return;
+            }}
+        );
+
         cond!(
             // already loaded
-            (self.token.is_some()) { return; }
+            (!overwrite && self.token.is_ok()) { return; }
             // a left-over token
-            (self.token_start < self.position) {
-                self.token = Some(Token::new(self.src.slice(self.token_start, self.position),
-                                             DUMMY_POS));
-                self.token_start = self.position;
-                return;
+            (self.token_start < self.src_position) {
+                println("foo");
+                self.src_position = self.token_start; // reparse the token
             }
             // finished
-            (self.token_start >= self.src.len()) { self.token = None; return; }
+            (self.token_start >= self.src.len()) {
+                set_token!(EOF);
+            }
         );
 
         let mut seen_token = false;
-        for str::each_char(self.src.slice(self.position, self.src.len())) |c| {
-            // TODO: tokenise strings
+        let mut inside_string = false;
+
+        for str::each_char(self.src.slice(self.src_position, self.src.len())) |c| {
             match c {
+                // TODO string escape sequences
+                '"' => { // string
+                    if seen_token { break }
+                    if !inside_string {
+                        inside_string = true;
+                        self.token_start = self.src_position + 1;
+                    } else {
+                        self.src_position += 1; // skip the trailing " for the next token
+                        set_token!(STRING(self.src.slice(self.token_start,
+                                                         self.src_position - 1)))
+                    }
+                }
+                // just collect characters while inside a string
+                _ if inside_string => {}
                 '(' | ')' => {
                     if !seen_token {
                         // we haven't seen a token yet, so use this character
-                        self.token_start = self.position;
-                        self.position += 1; // always 1 byte
-                        seen_token = true;
+                        self.position.col += 1; // always 1 column
+                        self.src_position += 1; // always 1 byte
+                        set_token!(if c == '(' {LPAREN} else {RPAREN})
                     } // we've already seen a token, so don't advance, and use that one
                     break;
                 }
@@ -77,42 +122,44 @@ pub impl<'self> Parser<'self> {
                 _ if c.is_whitespace() => { if seen_token { break } }
                 _ => {
                     if !seen_token { // start a new token here
-                        self.token_start = self.position;
+                        self.token_start = self.src_position;
                         seen_token = true;
                     }
                 }
             }
-            self.position += char::len_utf8_bytes(c);
+            if c == '\n' {
+                self.position.line += 1;
+                self.position.col = 0;
+            } else {
+                // technically incorrect, because we are iterating
+                // over characters, not graphemes
+                self.position.col += 1;
+            }
+
+            self.src_position += char::len_utf8_bytes(c);
         }
-        self.token = if seen_token {
-            Some(Token::new(self.src.slice(self.token_start, self.position), DUMMY_POS))
+
+        if seen_token {
+            set_token!(LIT(self.src.slice(self.token_start, self.src_position)))
         } else {
-            None
-        };
-        self.token_start = self.position;
-    }
-
-    fn peek_token(&mut self) -> Option<Token<'self>> {
-        // this is does nothing if token is Some
-        self.load_token();
-        self.token
-    }
-
-    fn peek_token_no_eof(&mut self) -> Result<Token<'self>, ParseFailure> {
-        match self.peek_token() {
-            Some(tok) => Ok(tok),
-            None => Err(ParseFailure { position: DUMMY_POS, description: ~"Unexpected EOF"})
+            set_token!(EOF);
         }
+    }
+
+    fn peek_token<'r>(&'r mut self) -> Result<Token<'self>, ParseFailure> {
+        // this is does nothing if token is Some
+        self.load_token(false);
+        copy self.token
     }
 
     fn bump_token(&mut self) {
-        self.load_token();
-        self.token = None;
+        self.load_token(false);
+        self.load_token(true);
     }
 
-    fn eat_token(&mut self, tok: &str) -> bool {
+    fn eat_token(&mut self, tok: Tok) -> bool {
         match self.peek_token() {
-            Some(Token { val, _ }) if val == tok => {
+            Ok(Token { val, _ }) if val == tok => {
                 self.bump_token();
                 true
             }
@@ -120,11 +167,11 @@ pub impl<'self> Parser<'self> {
         }
     }
 
-    fn expect_token(&mut self, tok: &str) -> Result<(), ParseFailure> {
+    fn expect_token(&mut self, tok: Tok) -> Result<(), ParseFailure> {
         if self.eat_token(tok) {
             Ok(())
         } else {
-            Err(ParseFailure { position: DUMMY_POS, description: fmt!("Expecting %s", tok)})
+            ParseFailure::err(fmt!("Expecting %?", tok), self.position)
         }
     }
 
@@ -132,14 +179,17 @@ pub impl<'self> Parser<'self> {
 
     /// Parse an identifier
     fn parse_ident(&mut self) -> Result<Ident, ParseFailure> {
-        do self.peek_token_no_eof().chain |tok| {
+        do self.peek_token().chain |tok| {
             match tok.val {
-                "" | "(" | ")" => {
-                    Err(ParseFailure { position: tok.position, description: ~"empty ident" })
+                LIT(val) => {
+                    self.bump_token();
+                    Ok(val.to_owned())
+                }
+                EOF => {
+                    ParseFailure::eof(tok.position)
                 }
                 _ => {
-                    self.bump_token();
-                    Ok(tok.val.to_owned())
+                    ParseFailure::err(~"invalid ident", tok.position)
                 }
             }
         }
@@ -148,24 +198,32 @@ pub impl<'self> Parser<'self> {
     fn parse_value_from_token(&mut self, tok: Token)  -> Result<Value, ParseFailure> {
         macro_rules! ret(($val:expr) => {{ self.bump_token(); return Ok($val); }});
         match tok.val {
-            "true" => ret!(Bool(true)),
-            "false" => ret!(Bool(false)),
+            LIT(string) => {
+                match string {
+                    "true" => ret!(Bool(true)),
+                    "false" => ret!(Bool(false)),
+                    _ => {}
+                }
+                match int::from_str(string) {
+                    Some(i) => ret!(Int(i)),
+                    None => {}
+                }
+                match float::from_str(string) {
+                    Some(f) => ret!(Float(f)),
+                    None => {}
+                }
+                // fall-through on failure
+            }
+            STRING(string) => ret!(Str(string.to_owned())),
+            EOF => { return ParseFailure::eof(tok.position); }
             _ => {}
         }
-        match int::from_str(tok.val) {
-            Some(i) => ret!(Int(i)),
-            None => {}
-        }
-        match float::from_str(tok.val) {
-            Some(f) => ret!(Float(f)),
-            None => {}
-        }
 
-        Err(ParseFailure { position: tok.position, description: ~"Invalid value"})
+        ParseFailure::err(~"Invalid value", tok.position)
     }
 
     fn parse_value(&mut self) -> Result<Value, ParseFailure> {
-        do self.peek_token_no_eof().chain |tok| { self.parse_value_from_token(tok) }
+        do self.peek_token().chain |tok| { self.parse_value_from_token(tok) }
     }
 
     fn parse_value_or_ident(&mut self) -> Result<~Value, ParseFailure> {
@@ -188,7 +246,7 @@ pub impl<'self> Parser<'self> {
 
     /// Parse a lambda expression, without the leading 'fn'
     fn parse_lambda(&mut self) -> Result<~Value, ParseFailure> {
-        do self.expect_token("(").chain |_| {
+        do self.expect_token(LPAREN).chain |_| {
             let args = do vec::build |push| {
                 loop {
                     match self.parse_ident() {
@@ -198,7 +256,7 @@ pub impl<'self> Parser<'self> {
                 }
             };
 
-            match self.expect_token(")") {
+            match self.expect_token(RPAREN) {
                 Err(err) => Err(err),
                 _ => match self.parse() {
                     Ok(expr) => Ok(~Lambda(args, expr)),
@@ -252,31 +310,38 @@ pub impl<'self> Parser<'self> {
     /// Parse the interior of an S-expr
     fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
         cond! (
-            (self.eat_token("if"))    { self.parse_if() }
-            (self.eat_token("quote")) { self.parse_quote() }
-            (self.eat_token("def"))   { self.parse_def() }
-            (self.eat_token("fn"))    { self.parse_lambda() }
-            (self.eat_token("do"))    { self.parse_do() }
-            // this is a silly hack
-            (self.peek_token().map_default(false,
-                                           |x| x.val == ")")) { Ok(~Unit) }
-
-            _ { self.parse_apply() }
+            (self.eat_token(LIT("if")))    { self.parse_if() }
+            (self.eat_token(LIT("quote"))) { self.parse_quote() }
+            (self.eat_token(LIT("def")))   { self.parse_def() }
+            (self.eat_token(LIT("fn")))    { self.parse_lambda() }
+            (self.eat_token(LIT("do")))    { self.parse_do() }
+            _ {
+                match self.peek_token() {
+                    Ok(Token { val: RPAREN, _ }) => {
+                        // this is a silly hack to parse ()
+                        Ok(~Unit)
+                    }
+                    _ => self.parse_apply()
+                }
+            }
         )
     }
 
     fn parse(&mut self) -> Result<~Value, ParseFailure> {
-        if self.eat_token("(") {
-            let ret = self.parse_parened();
-            if !self.eat_token(")") {
-                Err(ParseFailure { position: DUMMY_POS, description: ~"Expecting ')'"})
-            } else {
-                ret
+        if self.eat_token(LPAREN) {
+            do self.parse_parened().chain |parsed| {
+                if self.eat_token(RPAREN) {
+                    Ok(parsed)
+                } else if self.eat_token(EOF) {
+                    ParseFailure::eof(self.position)
+                } else {
+                    ParseFailure::err(~"Expecting ')'", self.position)
+                }
             }
         } else {
-            do self.peek_token_no_eof().chain |tok| {
-                if (tok.val == ")") {
-                    Err(ParseFailure { position: tok.position, description: ~"Unexpected ')'"})
+            do self.peek_token().chain |tok| {
+                if (tok.val == RPAREN) {
+                    ParseFailure::err(~"Unexpected ')'", tok.position)
                 } else {
                     self.parse_value_or_ident()
                 }
@@ -299,8 +364,11 @@ mod tests {
         test(~"(def a (+ 1 2))");
         test(~"(do (def a 1) (def b 2) (+ a b))");
 
-        // the extra space after the lambda?
         test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
+
+        test(~"(foo bar \"a b c d\")");
+
+        test(~"(ö ä å)");
     }
 
     #[test]

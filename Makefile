@@ -1,9 +1,15 @@
 
-.PHONY: all lib
+.PHONY: all lib check
 all: lib
 clean:
 	rm repl
 	rm librusp*
+
+check: *.rs
+	rustc --test rusp.rs
+	./rusp
+	rustc --test -L . repl.rs
+	./repl
 
 repl: repl.rs lib
 	rustc -L . repl.rs

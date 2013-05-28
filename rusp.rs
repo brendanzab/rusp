@@ -11,8 +11,15 @@
 
 use std::hashmap::*;
 
-pub mod parse;
+pub mod parser;
 pub mod pprint;
+
+///
+/// Performs a recursive decent parse of the source string.
+///
+pub fn parse(src: &str) -> Result<~Value, parser::ParseFailure> {
+    parser::Parser::new(src).parse()
+}
 
 /// Symbol identifier
 pub type Ident = ~str;
@@ -49,7 +56,7 @@ pub enum Value {
 }
 
 /// Workaround for `deriving` not working for rust closures
-pub struct RustFn(@fn(params: ~[Ident], env: &Env) -> Value);
+pub struct RustFn(@fn(params: ~[Ident], env: &Rusp) -> Value);
 
 impl Eq for RustFn {
     fn eq(&self, _: &RustFn) -> bool {
@@ -65,25 +72,25 @@ impl Clone for RustFn {
 }
 
 #[deriving(Eq)]
-pub struct Env {
+pub struct Rusp {
     values: HashMap<Ident, Value>,
-    outer: Option<@mut Env>,
+    outer: Option<@mut Rusp>,
 }
 
 pub type EvalResult = Result<Value, ~str>;
 
-impl Env {
+impl Rusp {
     /// Initializes an empty environment
-    pub fn empty() -> @mut Env {
-        @mut Env {
+    pub fn empty() -> @mut Rusp {
+        @mut Rusp {
             values: HashMap::new(),
             outer: None,
         }
     }
 
     /// Initializes a new environment with the specified values
-    pub fn new(outer: @mut Env) -> @mut Env {
-        @mut Env {
+    pub fn new(outer: @mut Rusp) -> @mut Rusp {
+        @mut Rusp {
             values: HashMap::new(),
             outer: Some(outer),
         }
@@ -159,12 +166,12 @@ mod tests {
 
     #[test]
     fn test_env() {
-        let outer = Env::empty();
+        let outer = Rusp::empty();
         outer.define(~"a", Int(0));
         outer.define(~"b", Float(1.0));
         outer.define(~"c", Str(~"hi"));
 
-        let inner = Env::new(outer);
+        let inner = Rusp::new(outer);
         inner.define(~"a", Int(3));
         inner.define(~"b", Int(4));
 
@@ -178,24 +185,24 @@ mod tests {
 
     #[test]
     fn test_unit() {
-        assert_eq!(Env::empty().eval(&Unit).get(), Unit);
+        assert_eq!(Rusp::empty().eval(&Unit).get(), Unit);
     }
 
     #[test]
     fn test_atoms() {
-        assert_eq!(Env::empty().eval(&Int(1)).get(), Int(1));
-        assert_eq!(Env::empty().eval(&Float(1.0)).get(), Float(1.0));
-        assert_eq!(Env::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
+        assert_eq!(Rusp::empty().eval(&Int(1)).get(), Int(1));
+        assert_eq!(Rusp::empty().eval(&Float(1.0)).get(), Float(1.0));
+        assert_eq!(Rusp::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
     }
 
     #[test]
     fn test_quote() {
-        assert_eq!(Env::empty().eval(&Quote(~Symbol(~"x"))).get(), Symbol(~"x"));
+        assert_eq!(Rusp::empty().eval(&Quote(~Symbol(~"x"))).get(), Symbol(~"x"));
     }
 
     #[test]
     fn test_symbol() {
-        let env = Env::empty();
+        let env = Rusp::empty();
         env.define(~"a", Int(0));
         env.define(~"b", Float(1.0));
         env.define(~"c", Str(~"hi"));
@@ -209,7 +216,7 @@ mod tests {
     #[test]
     fn test_if() {
         fn not(test: Value) -> EvalResult {
-            Env::empty().eval(&If(~test, ~Bool(false), ~Bool(true)))
+            Rusp::empty().eval(&If(~test, ~Bool(false), ~Bool(true)))
         }
 
         assert_eq!(not(Bool(true)).get(), Bool(false));
@@ -219,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_let() {
-        let env = Env::empty();
+        let env = Rusp::empty();
         assert!(env.eval(&Def(~"a", ~Int(0))).is_ok());
         assert!(env.eval(&Def(~"b", ~Float(1.0))).is_ok());
         assert!(env.eval(&Def(~"c", ~Str(~"hi"))).is_ok());
@@ -233,9 +240,9 @@ mod tests {
 
     #[test]
     fn test_do() {
-        assert_eq!(Env::empty().eval(&Do(~[~Str(~"hi")])).get(), Str(~"hi"));
+        assert_eq!(Rusp::empty().eval(&Do(~[~Str(~"hi")])).get(), Str(~"hi"));
         assert_eq!(
-            Env::empty().eval(&Do(~[
+            Rusp::empty().eval(&Do(~[
                 ~Unit,
                 ~Do(~[~Unit]),
                 ~Str(~"hi")
@@ -243,7 +250,7 @@ mod tests {
             Str(~"hi")
         );
 
-        assert!(Env::empty().eval(&Do(~[~Str(~"hi"), ~Unit])).is_err());
+        assert!(Rusp::empty().eval(&Do(~[~Str(~"hi"), ~Unit])).is_err());
     }
 
     #[test]

@@ -100,6 +100,8 @@ pub struct Env {
     outer: Option<@mut Env>,
 }
 
+pub type EvalResult = Result<Value, ~str>;
+
 impl Env {
     /// Initializes an empty environment
     pub fn empty() -> @mut Env {
@@ -129,16 +131,12 @@ impl Env {
             None => self.outer.chain(|env| env.find(ident)),
         }
     }
-}
 
-pub type EvalResult = Result<Value, ~str>;
-
-impl Expr {
-    /// Evaluates a Rusp expression
-    pub fn eval(&self, env: @mut Env) -> EvalResult {
-        match *self {
+    /// Evaluates a Rusp expression in the environment
+    pub fn eval(&mut self, expr: &Expr) -> EvalResult {
+        match *expr {
             Symbol(ref id) =>{
-                match env.find(id) {
+                match self.find(id) {
                     Some(val) => Ok(val),
                     None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
                 }
@@ -147,17 +145,17 @@ impl Expr {
                 Ok(val.clone())
             }
             If(ref test, ref conseq, ref alt) => {
-                do test.eval(env).chain |val| {
+                do self.eval(*test).chain |val| {
                     match val {
-                        Bool(true) => conseq.eval(env),
-                        Bool(false) => alt.eval(env),
+                        Bool(true) => self.eval(*conseq),
+                        Bool(false) => self.eval(*alt),
                         _ => Err(fmt!("expected boolean expression, found: %s", val.to_str())),
                     }
                 }
             }
             Let(ref id, ref expr) => {
-                do expr.eval(env).chain |val| {
-                    if env.define(id.clone(), val) {
+                do self.eval(*expr).chain |val| {
+                    if self.define(id.clone(), val) {
                         Ok(Unit)
                     } else {
                         Err(fmt!("`%s` was already defined in this environment.", id.to_str()))
@@ -166,13 +164,13 @@ impl Expr {
             }
             Do(ref exprs) => {
                 for uint::range(0, exprs.len() - 1) |i| {
-                    match exprs[i].eval(env) {
+                    match self.eval(exprs[i]) {
                         Ok(Unit) => (),
                         Ok(val) => return Err(fmt!("expected unit expression, found: %s", val.to_str())),
                         Err(err) => return Err(err),
                     }
                 }
-                exprs[exprs.len() - 1].eval(env)
+                self.eval(exprs[exprs.len() - 1])
             }
             Call(_,_) => fail!("Not yet implemented"),
         }
@@ -210,30 +208,30 @@ mod tests {
         env.define(~"b", Float(1.0));
         env.define(~"c", Str(~"hi"));
 
-        assert_eq!(Symbol(~"a").eval(env).get(), Int(0));
-        assert_eq!(Symbol(~"b").eval(env).get(), Float(1.0));
-        assert_eq!(Symbol(~"c").eval(env).get(), Str(~"hi"));
-        assert!(Symbol(~"d").eval(env).is_err());
+        assert_eq!(env.eval(&Symbol(~"a")).get(), Int(0));
+        assert_eq!(env.eval(&Symbol(~"b")).get(), Float(1.0));
+        assert_eq!(env.eval(&Symbol(~"c")).get(), Str(~"hi"));
+        assert!(env.eval(&Symbol(~"d")).is_err());
     }
 
     #[test]
     fn test_eval_literal() {
-        assert_eq!(Literal(Unit).eval(Env::empty()).get(), Unit);
-        assert_eq!(Literal(Int(1)).eval(Env::empty()).get(), Int(1));
-        assert_eq!(Literal(Float(1.0)).eval(Env::empty()).get(), Float(1.0));
-        assert_eq!(Literal(Str(~"hi")).eval(Env::empty()).get(), Str(~"hi"));
-        assert_eq!(Literal(Quote(~Literal(Unit))).eval(Env::empty()).get(),
+        assert_eq!(Env::empty().eval(&Literal(Unit)).get(), Unit);
+        assert_eq!(Env::empty().eval(&Literal(Int(1))).get(), Int(1));
+        assert_eq!(Env::empty().eval(&Literal(Float(1.0))).get(), Float(1.0));
+        assert_eq!(Env::empty().eval(&Literal(Str(~"hi"))).get(), Str(~"hi"));
+        assert_eq!(Env::empty().eval(&Literal(Quote(~Literal(Unit)))).get(),
                    Quote(~Literal(Unit)));
     }
 
     #[test]
     fn test_eval_if() {
         fn not(test: Value) -> EvalResult {
-            If(
+            Env::empty().eval(&If(
                 ~Literal(test),
                 ~Literal(Bool(false)),
                 ~Literal(Bool(true))
-            ).eval(Env::empty())
+            ))
         }
 
         assert_eq!(not(Bool(true)).get(), Bool(false));
@@ -244,30 +242,30 @@ mod tests {
     #[test]
     fn test_eval_let() {
         let env = Env::empty();
-        assert!(Let(~"a", ~Literal(Int(0))).eval(env).is_ok());
-        assert!(Let(~"b", ~Literal(Float(1.0))).eval(env).is_ok());
-        assert!(Let(~"c", ~Literal(Str(~"hi"))).eval(env).is_ok());
+        assert!(env.eval(&Let(~"a", ~Literal(Int(0)))).is_ok());
+        assert!(env.eval(&Let(~"b", ~Literal(Float(1.0)))).is_ok());
+        assert!(env.eval(&Let(~"c", ~Literal(Str(~"hi")))).is_ok());
 
         assert_eq!(env.find(&~"a"), Some(Int(0)));
         assert_eq!(env.find(&~"b"), Some(Float(1.0)));
         assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
 
-        assert!(Let(~"c", ~Literal(Unit)).eval(env).is_err());
+        assert!(env.eval(&Let(~"c", ~Literal(Unit))).is_err());
     }
 
     #[test]
     fn test_eval_do() {
-        assert_eq!(Do(~[~Literal(Str(~"hi"))]).eval(Env::empty()).get(), Str(~"hi"));
+        assert_eq!(Env::empty().eval(&Do(~[~Literal(Str(~"hi"))])).get(), Str(~"hi"));
         assert_eq!(
-            Do(~[
+            Env::empty().eval(&Do(~[
                 ~Literal(Unit),
                 ~Do(~[~Literal(Unit)]),
                 ~Literal(Str(~"hi"))
-            ]).eval(Env::empty()).get(),
+            ])).get(),
             Str(~"hi")
         );
 
-        assert!(Do(~[~Literal(Str(~"hi")),~Literal(Unit)]).eval(Env::empty()).is_err());
+        assert!(Env::empty().eval(&Do(~[~Literal(Str(~"hi")),~Literal(Unit)])).is_err());
     }
 
     #[test]

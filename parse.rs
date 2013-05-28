@@ -257,6 +257,10 @@ impl<'self> Parser<'self> {
             (self.eat_token("def"))   { self.parse_def() }
             (self.eat_token("fn"))    { self.parse_lambda() }
             (self.eat_token("do"))    { self.parse_do() }
+            // this is a silly hack
+            (self.peek_token().map_default(false,
+                                           |x| x.val == ")")) { Ok(~Unit) }
+
             _ { self.parse_apply() }
         )
     }

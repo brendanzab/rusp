@@ -139,7 +139,7 @@ impl<'self> Parser<'self> {
                 }
                 _ => {
                     self.bump_token();
-                    Ok(Ident(tok.val.to_owned()))
+                    Ok(tok.val.to_owned())
                 }
             }
         }

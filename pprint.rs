@@ -1,20 +1,15 @@
 use super::*;
 
-impl ToStr for Ident {
-    fn to_str(&self) -> ~str {
-        (**self).clone()
-    }
-}
-
 impl ToStr for Value {
     fn to_str(&self) -> ~str {
         match *self {
-            Nil => ~"()",
+            Unit => ~"()",
             Bool(b) => b.to_str(),
             Int(i) => i.to_str(),
-            Float(f)   => f.to_str(),
+            Float(f) => f.to_str(),
             Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
             Quote(ref expr) => fmt!("(quote %s)", expr.to_str()),
+            Rust(_) => ~"(extern)", // Not sure about this?
             Fn(ref ids, ref expr) => {
                 fmt!("(fn (%s) %s)",
                      str::connect(ids.map(|id| id.to_str()), " "),
@@ -55,7 +50,7 @@ mod tests {
     fn test_pprint() {
         assert_eq!(If(
             ~Literal(Bool(true)),
-            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Symbol(Ident(~"a")))))), ~[]),
+            ~Call(~Literal(Fn(~[], ~Literal(Quote(~Symbol(~"a"))))), ~[]),
             ~Literal(Bool(true))
         ).to_str(), ~"(if true ((fn () (quote a))) true)")
     }

@@ -31,12 +31,20 @@ pub enum Value {
     Str(~str),
     /// Symbol reference: `<ident>`
     Symbol(Ident),
+    /// Conditional expression: `(if <test> <conseq> <alt>)`
+    If(~Value, ~Value, ~Value),
+    /// Symbol definition: `(def <ident> <expr>)`
+    Def(Ident, ~Value),
+    /// Do expression: `(do <expr>+)`
+    Do(~[~Value]),
     /// Quoted expression: `(quote <expr>)`
-    Quote(~Expr),
+    Quote(~Value),
     /// A Rust function
     Rust(~fn(params: ~[Ident], env: &Env) -> Value),
     /// Anonymous function: `(fn (<ident>*) <expr>)`
-    Fn(~[Ident], ~Expr),
+    Lambda(~[Ident], ~Value),
+    /// Function application: `(<expr> <expr>+)`
+    Apply(~Value, ~[~Value]),
 }
 
 impl Eq for Value {
@@ -51,13 +59,19 @@ impl Eq for Value {
             Bool(b0) => cmp_other!(Bool(b1) => b0 == b1),
             Int(i0) => cmp_other!(Int(i1) => i0 == i1),
             Float(f0) => cmp_other!(Float(f1) => f0 == f1),
+            If(ref t0, ref c0, ref a0) => cmp_other!(If(ref t1, ref c1, ref a1) =>
+                (*t0 == *t1) && (*c0 == *c1) && (*a0 == *a1)),
+            Def(ref id0, ref exp0) => cmp_other!(Def(ref id1, ref exp1) =>
+                (*id0 == *id1) && (*exp0 == *exp1)),
+            Do(ref exprs0) => cmp_other!(Do(ref exprs1) => (*exprs0 == *exprs1)),
             Symbol(ref ident0) => cmp_other!(Symbol(ref ident1) => *ident0 == *ident1),
             Str(ref s0) => cmp_other!(Str(ref s1) => *s0 == *s1),
             Quote(ref expr0) => cmp_other!(Quote(ref expr1) => *expr0 == *expr1),
             Rust(_) => cmp_other!(Rust(_) => fail!("Cannot test equality of Rust functions (yet?).")),
-            Fn(ref params0, ref expr0) => cmp_other!(Fn(ref params1, ref expr1) => {
-                (*params0 == *params1) && (*expr0 == *expr1)
-            }),
+            Lambda(ref params0, ref expr0) => cmp_other!(Lambda(ref params1, ref expr1) =>
+                (*params0 == *params1) && (*expr0 == *expr1)),
+            Apply(ref expr0, ref params0) => cmp_other!(Apply(ref expr1, ref params1) =>
+                (*expr0 == *expr1) && (*params0 == *params1)),
         }
     }
     fn ne(&self, other: &Value) -> bool { !self.eq(other) }
@@ -71,40 +85,16 @@ impl Clone for Value {
             Int(i) => Int(i),
             Float(f) => Float(f),
             Str(ref s) => Str(s.clone()),
+            If(ref t, ref c, ref a) => If(t.clone(), c.clone(), a.clone()),
+            Def(ref ident, ref expr) => Def(ident.clone(), expr.clone()),
+            Do(ref exprs) => Do(exprs.clone()),
             Symbol(ref ident) => Symbol(ident.clone()),
             Quote(ref expr) => Quote(expr.clone()),
             Rust(_) => fail!("Cannot test the equality of Rust functions (yet?)"),
-            Fn(ref params, ref expr) => Fn(params.clone(), expr.clone()),
+            Lambda(ref params, ref expr) => Lambda(params.clone(), expr.clone()),
+            Apply(ref expr, ref params) => Apply(expr.clone(), params.clone()),
         }
     }
-}
-
-impl Value {
-    pub fn is_unit(&self)  -> bool { match *self { Unit     => true, _ => false } }
-    pub fn is_bool(&self)  -> bool { match *self { Bool(_)  => true, _ => false } }
-    pub fn is_int(&self)   -> bool { match *self { Int(_)   => true, _ => false } }
-    pub fn is_float(&self) -> bool { match *self { Float(_) => true, _ => false } }
-    pub fn is_str(&self)   -> bool { match *self { Str(_)   => true, _ => false } }
-    pub fn is_quote(&self) -> bool { match *self { Quote(_) => true, _ => false } }
-    pub fn is_rust(&self)  -> bool { match *self { Rust(_)  => true, _ => false } }
-    pub fn is_fn(&self)    -> bool { match *self { Fn(_,_)  => true, _ => false } }
-}
-
-///
-/// Primitive language expressions
-///
-#[deriving(Eq, Clone)]
-pub enum Expr {
-    /// Constant literal: `<val>`
-    Literal(Value),
-    /// Conditional expression: `(if <test> <conseq> <alt>)`
-    If(~Expr, ~Expr, ~Expr),
-    /// Symbol definition: `(def <ident> <expr>)`
-    Def(Ident, ~Expr),
-    /// Do expression: `(do <expr>+)`
-    Do(~[~Expr]),
-    /// Function application: `(<expr> <expr>+)`
-    Apply(~Expr, ~[~Expr]),
 }
 
 #[deriving(Eq)]
@@ -146,17 +136,17 @@ impl Env {
     }
 
     /// Evaluates a Rusp expression in the environment
-    pub fn eval(&mut self, expr: &Expr) -> EvalResult {
-        match *expr {
-            Literal(ref val) => {
-                match *val {
-                    Symbol(ref id) =>{
-                        match self.find(id) {
-                            Some(val) => Ok(val),
-                            None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
-                        }
-                    }
-                    _ => Ok(val.clone()),
+    pub fn eval(&mut self, value: &Value) -> EvalResult {
+        match *value {
+            Unit => Ok(Unit),
+            Bool(b) => Ok(Bool(b)),
+            Int(i) => Ok(Int(i)),
+            Float(f) => Ok(Float(f)),
+            Str(ref s) => Ok(Str(s.to_owned())),
+            Symbol(ref id) =>{
+                match self.find(id) {
+                    Some(val) => Ok(val),
+                    None => Err(fmt!("The value of `%s` was not defined in this environment", id.to_str())),
                 }
             }
             If(ref test, ref conseq, ref alt) => {
@@ -168,8 +158,8 @@ impl Env {
                     }
                 }
             }
-            Def(ref id, ref expr) => {
-                do self.eval(*expr).chain |val| {
+            Def(ref id, ref value) => {
+                do self.eval(*value).chain |val| {
                     if self.define(id.clone(), val) {
                         Ok(Unit)
                     } else {
@@ -187,23 +177,10 @@ impl Env {
                 }
                 self.eval(exprs[exprs.len() - 1])
             }
+            Quote(ref val) => Ok((**val).clone()),
+            Rust(_) => fail!("Not yet implemented"),
+            Lambda(_,_) => fail!("Not yet implemented"),
             Apply(_,_) => fail!("Not yet implemented"),
-            // Apply(ref proc, ref params) => {
-            //     do proc.eval(env).chain |val| {
-            //         match val {
-            //             Fn(vals, expr) => {
-            //                 if params.len() != vals.len() {
-            //                     Err(fmt!("not enough arguments were supplied"))
-            //                 } else {
-            //                     let inner_env = Env::new([], env);
-            //                     for params.eachi |param| {
-            //                     }
-            //                 }
-            //             }
-            //             _ => Err(fmt!("expected function expression, found %s", val.to_str())),
-            //         }
-            //     }
-            // }
         }
     }
 }
@@ -234,32 +211,27 @@ mod tests {
 
     #[test]
     fn test_eval_literal() {
-        assert_eq!(Env::empty().eval(&Literal(Unit)).get(), Unit);
-        assert_eq!(Env::empty().eval(&Literal(Int(1))).get(), Int(1));
-        assert_eq!(Env::empty().eval(&Literal(Float(1.0))).get(), Float(1.0));
-        assert_eq!(Env::empty().eval(&Literal(Str(~"hi"))).get(), Str(~"hi"));
-        assert_eq!(Env::empty().eval(&Literal(Quote(~Literal(Unit)))).get(),
-                   Quote(~Literal(Unit)));
+        assert_eq!(Env::empty().eval(&Unit).get(), Unit);
+        assert_eq!(Env::empty().eval(&Int(1)).get(), Int(1));
+        assert_eq!(Env::empty().eval(&Float(1.0)).get(), Float(1.0));
+        assert_eq!(Env::empty().eval(&Str(~"hi")).get(), Str(~"hi"));
+        assert_eq!(Env::empty().eval(&Quote(~Unit)).get(), Quote(~Unit));
 
         let env = Env::empty();
         env.define(~"a", Int(0));
         env.define(~"b", Float(1.0));
         env.define(~"c", Str(~"hi"));
 
-        assert_eq!(env.eval(&Literal(Symbol(~"a"))).get(), Int(0));
-        assert_eq!(env.eval(&Literal(Symbol(~"b"))).get(), Float(1.0));
-        assert_eq!(env.eval(&Literal(Symbol(~"c"))).get(), Str(~"hi"));
-        assert!(env.eval(&Literal(Symbol(~"d"))).is_err());
+        assert_eq!(env.eval(&Symbol(~"a")).get(), Int(0));
+        assert_eq!(env.eval(&Symbol(~"b")).get(), Float(1.0));
+        assert_eq!(env.eval(&Symbol(~"c")).get(), Str(~"hi"));
+        assert!(env.eval(&Symbol(~"d")).is_err());
     }
 
     #[test]
     fn test_eval_if() {
         fn not(test: Value) -> EvalResult {
-            Env::empty().eval(&If(
-                ~Literal(test),
-                ~Literal(Bool(false)),
-                ~Literal(Bool(true))
-            ))
+            Env::empty().eval(&If(~test, ~Bool(false), ~Bool(true)))
         }
 
         assert_eq!(not(Bool(true)).get(), Bool(false));
@@ -270,30 +242,30 @@ mod tests {
     #[test]
     fn test_eval_let() {
         let env = Env::empty();
-        assert!(env.eval(&Def(~"a", ~Literal(Int(0)))).is_ok());
-        assert!(env.eval(&Def(~"b", ~Literal(Float(1.0)))).is_ok());
-        assert!(env.eval(&Def(~"c", ~Literal(Str(~"hi")))).is_ok());
+        assert!(env.eval(&Def(~"a", ~Int(0))).is_ok());
+        assert!(env.eval(&Def(~"b", ~Float(1.0))).is_ok());
+        assert!(env.eval(&Def(~"c", ~Str(~"hi"))).is_ok());
 
         assert_eq!(env.find(&~"a"), Some(Int(0)));
         assert_eq!(env.find(&~"b"), Some(Float(1.0)));
         assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
 
-        assert!(env.eval(&Def(~"c", ~Literal(Unit))).is_err());
+        assert!(env.eval(&Def(~"c", ~Unit)).is_err());
     }
 
     #[test]
     fn test_eval_do() {
-        assert_eq!(Env::empty().eval(&Do(~[~Literal(Str(~"hi"))])).get(), Str(~"hi"));
+        assert_eq!(Env::empty().eval(&Do(~[~Str(~"hi")])).get(), Str(~"hi"));
         assert_eq!(
             Env::empty().eval(&Do(~[
-                ~Literal(Unit),
-                ~Do(~[~Literal(Unit)]),
-                ~Literal(Str(~"hi"))
+                ~Unit,
+                ~Do(~[~Unit]),
+                ~Str(~"hi")
             ])).get(),
             Str(~"hi")
         );
 
-        assert!(Env::empty().eval(&Do(~[~Literal(Str(~"hi")),~Literal(Unit)])).is_err());
+        assert!(Env::empty().eval(&Do(~[~Str(~"hi"), ~Unit])).is_err());
     }
 
     #[test]

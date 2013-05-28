@@ -168,15 +168,15 @@ impl<'self> Parser<'self> {
         do self.peek_token_no_eof().chain |tok| { self.parse_value_from_token(tok) }
     }
 
-    fn parse_value_or_ident(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_value_or_ident(&mut self) -> Result<~Value, ParseFailure> {
         match self.parse_value() {
-            Ok(val) => Ok(~Literal(val)),
-            Err(_) => do self.parse_ident().map |&ident| { ~Literal(Symbol(ident)) }
+            Ok(val) => Ok(~val),
+            Err(_) => do self.parse_ident().map |&ident| { ~Symbol(ident) }
         }
     }
 
     /// Parse an if expression, without the leading 'if'
-    fn parse_if(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_if(&mut self) -> Result<~Value, ParseFailure> {
         do self.parse().chain |test| {
             do self.parse().chain |conseq| {
                 do self.parse().map |&alt| {
@@ -187,7 +187,7 @@ impl<'self> Parser<'self> {
     }
 
     /// Parse a lambda expression, without the leading 'fn'
-    fn parse_lambda(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_lambda(&mut self) -> Result<~Value, ParseFailure> {
         do self.expect_token("(").chain |_| {
             let args = do vec::build |push| {
                 loop {
@@ -201,7 +201,7 @@ impl<'self> Parser<'self> {
             match self.expect_token(")") {
                 Err(err) => Err(err),
                 _ => match self.parse() {
-                    Ok(expr) => Ok(~Literal(Fn(args, expr))),
+                    Ok(expr) => Ok(~Lambda(args, expr)),
                     Err(err) => Err(err)
                 }
             }
@@ -209,13 +209,13 @@ impl<'self> Parser<'self> {
     }
 
     /// Parse a quote expression, without the leading 'quote'
-    fn parse_quote(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_quote(&mut self) -> Result<~Value, ParseFailure> {
         do self.parse().map |&expr| {
-            ~Literal(Quote(expr))
+            ~Quote(expr)
         }
     }
 
-    fn parse_def(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_def(&mut self) -> Result<~Value, ParseFailure> {
         do self.parse_ident().chain |ident| {
             do self.parse().map |&expr| {
                 ~Def(copy ident, expr)
@@ -223,7 +223,7 @@ impl<'self> Parser<'self> {
         }
     }
 
-    fn parse_do(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_do(&mut self) -> Result<~Value, ParseFailure> {
         let mut exprs = ~[];
         loop {
             match self.parse() {
@@ -235,7 +235,7 @@ impl<'self> Parser<'self> {
         Ok(~Do(exprs))
     }
 
-    fn parse_apply(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_apply(&mut self) -> Result<~Value, ParseFailure> {
         do self.parse().chain |expr| {
             let args = do vec::build |push| {
                 loop {
@@ -250,7 +250,7 @@ impl<'self> Parser<'self> {
     }
 
     /// Parse the interior of an S-expr
-    fn parse_parened(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
         cond! (
             (self.eat_token("if"))    { self.parse_if() }
             (self.eat_token("quote")) { self.parse_quote() }
@@ -261,7 +261,7 @@ impl<'self> Parser<'self> {
         )
     }
 
-    fn parse(&mut self) -> Result<~Expr, ParseFailure> {
+    fn parse(&mut self) -> Result<~Value, ParseFailure> {
         if self.eat_token("(") {
             let ret = self.parse_parened();
             if !self.eat_token(")") {
@@ -284,7 +284,7 @@ impl<'self> Parser<'self> {
 ///
 /// Performs a recursive decent parse of the source string.
 ///
-pub fn parse(src: &str) -> Result<~Expr, ParseFailure> {
+pub fn parse(src: &str) -> Result<~Value, ParseFailure> {
     Parser::new(src).parse()
 }
 

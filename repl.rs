@@ -31,7 +31,7 @@ fn main() {
 
         let continue_line = match rusp::parse(stored) {
             Ok(ex) => {
-                let to_print = match env.eval(&ex) {
+                let to_print = match env.eval(@ex) {
                     Ok(evaled) => evaled.to_str(),
                     Err(e) => {
                         fmt!("Error: %s", e)

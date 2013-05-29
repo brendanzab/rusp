@@ -32,17 +32,17 @@ pub enum Value {
     Int(int),
     Float(float),
     Str(~str),
-    List(~[~Value]),
+    List(~[@Value]),
     Symbol(Ident),
 
     // the bool arguments control whether the arguments are evaluated
     // before calling the function (normal function) or not (a macro)
     Rust(RustFn, bool),
-    Lambda(~[Ident], ~Value, bool),
+    Lambda(~[Ident], @Value, bool),
 }
 
 /// Workaround for `deriving` not working for rust closures
-pub struct RustFn(@fn(params: &[~Value], env: @mut Rusp) -> EvalResult);
+pub struct RustFn(@fn(params: &[@Value], env: @mut Rusp) -> EvalResult);
 
 impl Eq for RustFn {
     fn eq(&self, _: &RustFn) -> bool {
@@ -60,11 +60,11 @@ impl Clone for RustFn {
 
 #[deriving(Eq)]
 pub struct Rusp {
-    values: HashMap<Ident, Value>,
+    values: HashMap<Ident, @Value>,
     outer: Option<@mut Rusp>,
 }
 
-pub type EvalResult = Result<Value, ~str>;
+pub type EvalResult = Result<@Value, ~str>;
 
 impl Rusp {
     /// Initializes an empty environment
@@ -92,29 +92,25 @@ impl Rusp {
     }
 
     /// Defines a new identifier/value pair in the environment
-    pub fn define(&mut self, ident: Ident, val: Value) -> EvalResult {
-        if self.values.insert(copy ident, val)  { // !
-            Ok(List(~[]))
+    pub fn define(&mut self, ident: Ident, val: @Value) -> EvalResult {
+        if self.values.insert(ident.clone(), val)  {
+            Ok(@List(~[]))
         } else {
             Err(fmt!("`%s` was already defined in this environment.", ident.to_str()))
         }
     }
 
     /// Attempts to find a value corresponding to the supplied identifier
-    pub fn find(&self, ident: &Ident) -> Option<Value> {
+    pub fn find(&self, ident: &Ident) -> Option<@Value> {
         match self.values.find(ident) {
-            Some(val) => Some(val.clone()),
+            Some(val) => Some(*val),
             None => self.outer.chain(|env| env.find(ident)),
         }
     }
 
     /// Evaluates a Rusp expression in the environment
-    pub fn eval(@mut self, value: &Value) -> EvalResult {
+    pub fn eval(@mut self, value: @Value) -> EvalResult {
         match *value {
-            Bool(b) => Ok(Bool(b)),
-            Int(i) => Ok(Int(i)),
-            Float(f) => Ok(Float(f)),
-            Str(ref s) => Ok(Str(s.to_owned())),
             Symbol(ref id) => {
                 match self.find(id) {
                     Some(v) => Ok(v),
@@ -126,21 +122,20 @@ impl Rusp {
                 match *vals {
                     [ref v, .. args] => {
                         do self.eval(*v).chain |res| {
-                            self.eval_call(&res, args)
+                            self.eval_call(res, args)
                         }
                     }
-                    [] => Ok(List(~[])),
+                    [] => Ok(@List(~[])),
                 }
             }
-            // mimic clojure
-            Rust(_, _) => Ok(value.clone()),
-            Lambda(_, _, _) => Ok(value.clone())
+            // everything else evaluates to itself
+            _ => Ok(value)
         }
     }
 
     /// Eval a call using `func`, which should have been previously
     /// evaluated.
-    fn eval_call(@mut self, func: &Value, args: &[~Value]) -> EvalResult {
+    fn eval_call(@mut self, func: &Value, args: &[@Value]) -> EvalResult {
         match *func {
             Rust(ref f, no_eval) => {
                 if no_eval {
@@ -152,7 +147,7 @@ impl Rusp {
                     for args.each |v| {
                         match self.eval(*v) {
                             Err(e) => return Err(e),
-                            Ok(evaled) => { evaled_args.push(~evaled) }
+                            Ok(evaled) => { evaled_args.push(evaled) }
                         }
                     }
                     (**f)(evaled_args, self)
@@ -168,7 +163,7 @@ impl Rusp {
                 if no_eval {
                     // macro
                     for vec::each2(*ids, args) |id, val| {
-                        match local.define(id.clone(), (**val).clone()) {
+                        match local.define(id.clone(), *val) {
                             Err(e) => return Err(e),
                             _ => {}
                         }
@@ -200,43 +195,43 @@ mod tests {
     #[test]
     fn test_env() {
         let outer = Rusp::new();
-        outer.define(~"a", Int(0));
-        outer.define(~"b", Float(1.0));
-        outer.define(~"c", Str(~"hi"));
+        outer.define(~"a", @Int(0));
+        outer.define(~"b", @Float(1.0));
+        outer.define(~"c", @Str(~"hi"));
 
         let inner = Rusp::new_with_outer(outer);
-        inner.define(~"a", Int(3));
-        inner.define(~"b", Int(4));
+        inner.define(~"a", @Int(3));
+        inner.define(~"b", @Int(4));
 
-        assert_eq!(outer.find(&~"a"), Some(Int(0)));
-        assert_eq!(outer.find(&~"b"), Some(Float(1.0)));
-        assert_eq!(outer.find(&~"c"), Some(Str(~"hi")));
-        assert_eq!(inner.find(&~"a"), Some(Int(3)));
-        assert_eq!(inner.find(&~"b"), Some(Int(4)));
-        assert_eq!(inner.find(&~"c"), Some(Str(~"hi")));
+        assert_eq!(outer.find(&~"a"), Some(@Int(0)));
+        assert_eq!(outer.find(&~"b"), Some(@Float(1.0)));
+        assert_eq!(outer.find(&~"c"), Some(@Str(~"hi")));
+        assert_eq!(inner.find(&~"a"), Some(@Int(3)));
+        assert_eq!(inner.find(&~"b"), Some(@Int(4)));
+        assert_eq!(inner.find(&~"c"), Some(@Str(~"hi")));
     }
 
     #[test]
     fn test_atoms() {
-        assert_eq!(Rusp::new().eval(&Int(1)).get(), Int(1));
-        assert_eq!(Rusp::new().eval(&Float(1.0)).get(), Float(1.0));
-        assert_eq!(Rusp::new().eval(&Str(~"hi")).get(), Str(~"hi"));
+        assert_eq!(Rusp::new().eval(@Int(1)).get(), @Int(1));
+        assert_eq!(Rusp::new().eval(@Float(1.0)).get(), @Float(1.0));
+        assert_eq!(Rusp::new().eval(@Str(~"hi")).get(), @Str(~"hi"));
     }
 
     #[test]
     fn test_list() {
-        assert_eq!(Rusp::new().eval(&List(~[])).get(), List(~[]));
+        assert_eq!(Rusp::new().eval(@List(~[])).get(), @List(~[]));
         assert_eq!(
-            Rusp::new().eval(&List(~[
-                ~Symbol(~"list"),
-                ~Str(~"hi"),
-                ~List(~[~Symbol(~"quote"), ~Symbol(~"x")]),
-                ~Int(1)
+            Rusp::new().eval(@List(~[
+                @Symbol(~"list"),
+                @Str(~"hi"),
+                @List(~[@Symbol(~"quote"), @Symbol(~"x")]),
+                @Int(1)
             ])).get(),
-            List(~[
-                ~Str(~"hi"),
-                ~Symbol(~"x"),
-                ~Int(1)
+            @List(~[
+                @Str(~"hi"),
+                @Symbol(~"x"),
+                @Int(1)
             ])
         );
     }
@@ -244,84 +239,84 @@ mod tests {
     #[test]
     fn test_quote() {
         assert_eq!(Rusp::new().eval(
-            &List(~[~Symbol(~"quote"), ~Symbol(~"x")])).get(),
-            Symbol(~"x")
+            @List(~[@Symbol(~"quote"), @Symbol(~"x")])).get(),
+            @Symbol(~"x")
         );
     }
 
     #[test]
     fn test_symbol() {
         let env = Rusp::new();
-        env.define(~"a", Int(0));
-        env.define(~"b", Float(1.0));
-        env.define(~"c", Str(~"hi"));
+        env.define(~"a", @Int(0));
+        env.define(~"b", @Float(1.0));
+        env.define(~"c", @Str(~"hi"));
 
-        assert_eq!(env.eval(&Symbol(~"a")).get(), Int(0));
-        assert_eq!(env.eval(&Symbol(~"b")).get(), Float(1.0));
-        assert_eq!(env.eval(&Symbol(~"c")).get(), Str(~"hi"));
-        assert!(env.eval(&Symbol(~"d")).is_err());
+        assert_eq!(env.eval(@Symbol(~"a")).get(), @Int(0));
+        assert_eq!(env.eval(@Symbol(~"b")).get(), @Float(1.0));
+        assert_eq!(env.eval(@Symbol(~"c")).get(), @Str(~"hi"));
+        assert!(env.eval(@Symbol(~"d")).is_err());
     }
 
     #[test]
     fn test_if() {
         fn not(test: Value) -> EvalResult {
-            Rusp::new().eval(&List(~[~Symbol(~"if"), ~test, ~Bool(false), ~Bool(true)]))
+            Rusp::new().eval(@List(~[@Symbol(~"if"), @test, @Bool(false), @Bool(true)]))
         }
 
-        assert_eq!(not(Bool(true)).get(), Bool(false));
-        assert_eq!(not(Bool(false)).get(), Bool(true));
+        assert_eq!(not(Bool(true)).get(), @Bool(false));
+        assert_eq!(not(Bool(false)).get(), @Bool(true));
         assert!(not(Str(~"hi")).is_err());
     }
 
     #[test]
     fn test_def() {
         let env = Rusp::new();
-        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"a"), ~Int(0)])).is_ok());
-        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"b"), ~Float(1.0)])).is_ok());
-        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"c"), ~Str(~"hi")])).is_ok());
+        assert!(env.eval(@List(~[@Symbol(~"def"), @Symbol(~"a"), @Int(0)])).is_ok());
+        assert!(env.eval(@List(~[@Symbol(~"def"), @Symbol(~"b"), @Float(1.0)])).is_ok());
+        assert!(env.eval(@List(~[@Symbol(~"def"), @Symbol(~"c"), @Str(~"hi")])).is_ok());
 
-        assert_eq!(env.find(&~"a"), Some(Int(0)));
-        assert_eq!(env.find(&~"b"), Some(Float(1.0)));
-        assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
+        assert_eq!(env.find(&~"a"), Some(@Int(0)));
+        assert_eq!(env.find(&~"b"), Some(@Float(1.0)));
+        assert_eq!(env.find(&~"c"), Some(@Str(~"hi")));
 
-        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"c"), ~List(~[])])).is_err());
+        assert!(env.eval(@List(~[@Symbol(~"def"), @Symbol(~"c"), @List(~[])])).is_err());
     }
 
     #[test]
     fn test_do() {
-        assert_eq!(Rusp::new().eval(&List(~[~Symbol(~"do"), ~Str(~"hi")])).get(), Str(~"hi"));
+        assert_eq!(Rusp::new().eval(@List(~[@Symbol(~"do"), @Str(~"hi")])).get(), @Str(~"hi"));
         assert_eq!(
-            Rusp::new().eval(&List(~[
-                ~Symbol(~"do"),
-                ~List(~[]),
-                ~List(~[~Symbol(~"do"), ~List(~[])]),
-                ~Str(~"hi")
+            Rusp::new().eval(@List(~[
+                @Symbol(~"do"),
+                @List(~[]),
+                @List(~[@Symbol(~"do"), @List(~[])]),
+                @Str(~"hi")
             ])).get(),
-            Str(~"hi")
+            @Str(~"hi")
         );
 
-        assert!(Rusp::new().eval(&List(~[~Symbol(~"do"), ~Str(~"hi"), ~List(~[])])).is_err());
+        assert!(Rusp::new().eval(@List(~[@Symbol(~"do"), @Str(~"hi"), @List(~[])])).is_err());
     }
 
     #[test]
     fn test_fn() {
         let env = Rusp::new();
-        env.eval(&parse("(def f (fn (a b) a))").unwrap());
-        assert_eq!(env.eval(&parse("(f 1 2)").unwrap()).unwrap(), Int(1));
+        env.eval(@parse("(def f (fn (a b) a))").unwrap());
+        assert_eq!(env.eval(@parse("(f 1 2)").unwrap()).unwrap(), @Int(1));
 
-        assert!(env.eval(&parse("(f 1)").unwrap()).is_err());
+        assert!(env.eval(@parse("(f 1)").unwrap()).is_err());
     }
 
     #[test]
     fn test_macro() {
         let env = Rusp::new();
-        env.eval(&parse("(def m (macro (a) a))").unwrap());
-        env.eval(&parse("(def f (fn (a) a))").unwrap());
-        env.eval(&parse("(def x 1)").unwrap());
+        env.eval(@parse("(def m (macro (a) a))").unwrap());
+        env.eval(@parse("(def f (fn (a) a))").unwrap());
+        env.eval(@parse("(def x 1)").unwrap());
 
         // check the semantics of macros vs fn, x is not evaluated for
         // `m`, but is for `f`.
-        assert_eq!(env.eval(&parse("(m x)").unwrap()).unwrap(), Symbol(~"x"));
-        assert_eq!(env.eval(&parse("(f x)").unwrap()).unwrap(), Int(1));
+        assert_eq!(env.eval(@parse("(m x)").unwrap()).unwrap(), @Symbol(~"x"));
+        assert_eq!(env.eval(@parse("(f x)").unwrap()).unwrap(), @Int(1));
     }
 }

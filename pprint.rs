@@ -26,10 +26,10 @@ mod tests {
     use super::super::*;
     fn test_pprint() {
         assert_eq!(List(~[
-            ~Symbol(~"if"),
-            ~Bool(true),
-            ~List(~[~Lambda(~[], ~List(~[~Symbol(~"quote"), ~Symbol(~"a")]), false)]),
-            ~Bool(true)
+            @Symbol(~"if"),
+            @Bool(true),
+            @List(~[@Lambda(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]), false)]),
+            @Bool(true)
         ]).to_str(), ~"(if true ((fn () (quote a))) true)")
     }
 }

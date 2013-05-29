@@ -239,7 +239,7 @@ pub impl<'self> Parser<'self> {
             do vec::build |push| {
                 loop {
                     match self.parse() {
-                        Ok(val) => push(~val),
+                        Ok(val) => push(@val),
                         Err(_) => break,
                     }
                 }

@@ -175,6 +175,11 @@ pub impl<'self> Parser<'self> {
         }
     }
 
+    fn is_eof(&mut self) -> bool {
+        // eating is ok, since the token after EOF is also EOF
+        self.eat_token(EOF)
+    }
+
     // Parsing
 
     /// Parse an identifier

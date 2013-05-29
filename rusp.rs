@@ -18,8 +18,18 @@ pub mod pprint;
 ///
 /// Performs a recursive decent parse of the source string.
 ///
-pub fn parse(src: &str) -> Result<Value, parser::ParseFailure> {
-    parser::Parser::new(src).parse()
+pub fn parse(src: &str) -> Result<~[@Value], parser::ParseFailure> {
+    let mut parsed = ~[];
+    let mut p = parser::Parser::new(src);
+
+    while !p.is_eof() {
+        match p.parse() {
+            Ok(v) => parsed.push(@v),
+            Err(e) => return Err(e)
+        }
+    }
+
+    Ok(parsed)
 }
 
 /// Symbol identifier

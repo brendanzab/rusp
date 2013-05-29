@@ -59,7 +59,7 @@ fn builtin_eval(params: &[@Value], env: @mut Rusp) -> EvalResult {
 fn builtin_parse(params: &[@Value], _: @mut Rusp) -> EvalResult {
     match params {
         [@Str(ref s)] => match parse(*s) {
-            Ok(v) => Ok(@v),
+            Ok(vals) => Ok(@List(vals)),
             Err(parser::ParseFailure { description, _  }) => Err(description)
         },
         _ => Err(~"`parse` expects 1 argument")

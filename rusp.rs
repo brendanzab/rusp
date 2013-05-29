@@ -311,22 +311,22 @@ mod tests {
     #[test]
     fn test_fn() {
         let env = Rusp::new();
-        env.eval(@parse("(def f (fn (a b) a))").unwrap());
-        assert_eq!(env.eval(@parse("(f 1 2)").unwrap()).unwrap(), @Int(1));
+        env.eval(parse("(def f (fn (a b) a))").unwrap()[0]);
+        assert_eq!(env.eval(parse("(f 1 2)").unwrap()[0]).unwrap(), @Int(1));
 
-        assert!(env.eval(@parse("(f 1)").unwrap()).is_err());
+        assert!(env.eval(parse("(f 1)").unwrap()[0]).is_err());
     }
 
     #[test]
     fn test_macro() {
         let env = Rusp::new();
-        env.eval(@parse("(def m (macro (a) a))").unwrap());
-        env.eval(@parse("(def f (fn (a) a))").unwrap());
-        env.eval(@parse("(def x 1)").unwrap());
+        env.eval(parse("(def m (macro (a) a))").unwrap()[0]);
+        env.eval(parse("(def f (fn (a) a))").unwrap()[0]);
+        env.eval(parse("(def x 1)").unwrap()[0]);
 
         // check the semantics of macros vs fn, x is not evaluated for
         // `m`, but is for `f`.
-        assert_eq!(env.eval(@parse("(m x)").unwrap()).unwrap(), @Symbol(~"x"));
-        assert_eq!(env.eval(@parse("(f x)").unwrap()).unwrap(), @Int(1));
+        assert_eq!(env.eval(parse("(m x)").unwrap()[0]).unwrap(), @Symbol(~"x"));
+        assert_eq!(env.eval(parse("(f x)").unwrap()[0]).unwrap(), @Int(1));
     }
 }

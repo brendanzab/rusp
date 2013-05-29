@@ -175,6 +175,11 @@ pub impl<'self> Parser<'self> {
         }
     }
 
+    fn is_eof(&mut self) -> bool {
+        // eating is ok, since the token after EOF is also EOF
+        self.eat_token(EOF)
+    }
+
     // Parsing
 
     /// Parse an identifier
@@ -226,20 +231,20 @@ pub impl<'self> Parser<'self> {
         do self.peek_token().chain |tok| { self.parse_value_from_token(tok) }
     }
 
-    fn parse_value_or_ident(&mut self) -> Result<~Value, ParseFailure> {
+    fn parse_value_or_ident(&mut self) -> Result<Value, ParseFailure> {
         match self.parse_value() {
-            Ok(val) => Ok(~val),
-            Err(_) => do self.parse_ident().map |&ident| { ~Symbol(ident) }
+            Ok(val) => Ok(val),
+            Err(_) => self.parse_ident().map(|&ident| Symbol(ident))
         }
     }
 
     /// Parse the interior of an S-expr
-    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
-        Ok(~List(
+    fn parse_parened(&mut self) -> Result<Value, ParseFailure> {
+        Ok(List(
             do vec::build |push| {
                 loop {
                     match self.parse() {
-                        Ok(val) => push(val),
+                        Ok(val) => push(@val),
                         Err(_) => break,
                     }
                 }
@@ -247,7 +252,7 @@ pub impl<'self> Parser<'self> {
         ))
     }
 
-    fn parse(&mut self) -> Result<~Value, ParseFailure> {
+    fn parse(&mut self) -> Result<Value, ParseFailure> {
         if self.eat_token(LPAREN) {
             do self.parse_parened().chain |parsed| {
                 if self.eat_token(RPAREN) {

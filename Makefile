@@ -1,23 +1,24 @@
+RUSP_FILES=rusp.rs pprint.rs parser.rs builtins.rs
 
 .PHONY: all lib check
-all: lib
+all: repl
 clean:
 	rm repl
 	rm librusp*
 
 check: check-rusp check-repl
 
-check-rusp: pprint.rs rusp.rs parser.rs
-	rustc --test rusp.rs
-	./rusp
+check-rusp: $(RUSP_FILES)
+	rustc --test rusp.rs -o test-rusp
+	./test-rusp
 check-repl: repl.rs lib
-	rustc --test -L . repl.rs
-	./repl
+	rustc --test -L . repl.rs -o test-repl
+	./test-repl
 
 repl: repl.rs lib
 	rustc -L . repl.rs
 
 lib: librusp*
 
-librusp*: pprint.rs rusp.rs parser.rs
+librusp*: $(RUSP_FILES)
 	rustc rusp.rs

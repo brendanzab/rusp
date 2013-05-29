@@ -10,7 +10,7 @@ fn main() {
     let mut prompt = "> ";
     let mut stored = ~"";
     println("Rusp Repl");
-    let env = rusp::Rusp::empty();
+    let env = rusp::Rusp::new();
 
     loop {
         let line = match unsafe { rl::read(prompt) } {
@@ -27,7 +27,7 @@ fn main() {
                 // print the AST, since that's useful for debugging
                 println(fmt!("AST: %?" ex));
                 // separate, since this can make the REPL crash
-                println(match env.eval(ex) {
+                println(match env.eval(&ex) {
                     Ok(evaled) => evaled.to_str(),
                     Err(e) => {
                         fmt!("Error: %s", e)

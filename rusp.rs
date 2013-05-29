@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(Rusp::empty().eval(&List(~[])).get(), List(~[]));
         assert_eq!(
             Rusp::empty().eval(&List(~[
-                ~Symbol("list"),
+                ~Symbol(~"list"),
                 ~Str(~"hi"),
                 ~List(~[~Symbol(~"quote"), ~Symbol(~"x")]),
                 ~Int(1)
@@ -293,15 +293,15 @@ mod tests {
     #[test]
     fn test_def() {
         let env = Rusp::empty();
-        assert!(env.eval(&List(~[~Symbol(~"def"), Symbol(~"a"), ~Int(0)])).is_ok());
-        assert!(env.eval(&List(~[~Symbol(~"def"), Symbol(~"b"), ~Float(1.0)])).is_ok());
-        assert!(env.eval(&List(~[~Symbol(~"def"), Symbol(~"c"), ~Str(~"hi")])).is_ok());
+        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"a"), ~Int(0)])).is_ok());
+        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"b"), ~Float(1.0)])).is_ok());
+        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"c"), ~Str(~"hi")])).is_ok());
 
         assert_eq!(env.find(&~"a"), Some(Int(0)));
         assert_eq!(env.find(&~"b"), Some(Float(1.0)));
         assert_eq!(env.find(&~"c"), Some(Str(~"hi")));
 
-        assert!(env.eval(&List(~[~Symbol(~"def"), Symbol(~"c"), ~List(~[])])).is_err());
+        assert!(env.eval(&List(~[~Symbol(~"def"), ~Symbol(~"c"), ~List(~[])])).is_err());
     }
 
     #[test]
@@ -311,13 +311,13 @@ mod tests {
             Rusp::empty().eval(&List(~[
                 ~Symbol(~"do"),
                 ~List(~[]),
-                ~Do(~[~List(~[])]),
+                ~List(~[~Symbol(~"do"), ~List(~[])]),
                 ~Str(~"hi")
             ])).get(),
             Str(~"hi")
         );
 
-        assert!(Rusp::empty().eval(&Do(~[~Str(~"hi"), ~List(~[])])).is_err());
+        assert!(Rusp::empty().eval(&List(~[~Symbol(~"do"), ~Str(~"hi"), ~List(~[])])).is_err());
     }
 
     #[test]

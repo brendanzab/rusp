@@ -23,10 +23,11 @@ impl ToStr for Value {
 mod tests {
     use super::super::*;
     fn test_pprint() {
-        assert_eq!(If(
+        assert_eq!(List(~[
+            ~Symbol(~"if"),
             ~Bool(true),
-            ~Apply(~Lambda(~[], ~Quote(~Symbol(~"a"))), ~[]),
+            ~List(~[~Lambda(~[], ~List(~[~Symbol(~"quote"), ~Symbol(~"a")]))]),
             ~Bool(true)
-        ).to_str(), ~"(if true ((fn () (quote a))) true)")
+        ]).to_str(), ~"(if true ((fn () (quote a))) true)")
     }
 }

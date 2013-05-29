@@ -10,7 +10,7 @@ fn main() {
     let mut prompt = "> ";
     let mut stored = ~"";
     println("Rusp Repl");
-    let env = rusp::Rusp::empty();
+    let env = rusp::Rusp::new();
 
     loop {
         let line = match unsafe { rl::read(prompt) } {
@@ -19,20 +19,32 @@ fn main() {
         };
 
         if !stored.is_empty() { stored.push_char('\n'); }
+        else if line.is_empty() {
+            // no input and no history
+            loop;
+        }
         stored.push_str(line);
-        unsafe { rl::add_history(line); }
+
+        if !line.is_empty() {
+            unsafe { rl::add_history(line); }
+        }
 
         let continue_line = match rusp::parse(stored) {
-            Ok(ex) => {
-                // print the AST, since that's useful for debugging
-                println(fmt!("AST: %?" ex));
-                // separate, since this can make the REPL crash
-                println(match env.eval(ex) {
-                    Ok(evaled) => evaled.to_str(),
-                    Err(e) => {
-                        fmt!("Error: %s", e)
+            Ok(exprs) => {
+                let mut to_print = ~"()";
+                for exprs.each |ex| {
+                    match env.eval(*ex) {
+                        Ok(evaled) => to_print = evaled.to_str(),
+                        Err(e) => {
+                            to_print = fmt!("Error: %s", e);
+                            break;
+                        }
                     }
-                });
+                }
+
+                if to_print != ~"()" {
+                    println(to_print);
+                }
                 false
             }
             Err(ref er) if er.description == ~"Unexpected EOF" => {

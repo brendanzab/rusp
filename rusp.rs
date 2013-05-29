@@ -114,6 +114,7 @@ impl Rusp {
                     &[~Symbol(~"quote"),..tl] => self.eval_quote(tl),
                     &[~Symbol(~"fn"),..tl] => self.eval_fn(tl),
                     //&[proc,..params] => fail!("Not yet implemented"),
+                    &[] => Ok(List(~[])),
                     _ => fail!("Not yet implemented"),
                 }
             }

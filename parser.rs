@@ -306,12 +306,6 @@ mod tests {
 
         test!(~"(");
         test!(~")");
-
-        test!(~"(fn (a b (+ 1 a b)))");
-        test!(~"(if true)");
-        test!(~"(if true 1 2 3)");
-        test!(~"(def a)");
-        test!(~"(def a b c)");
-        test!(~"(do)");
+        test!(~"\"no closing quote")
     }
 }

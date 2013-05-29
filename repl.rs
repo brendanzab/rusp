@@ -1,35 +1,59 @@
 extern mod rusp;
+extern mod extra;
+
+// for a nicer prompt, with history etc.
+use extra::rl;
 
 fn main() {
+    unsafe { do rl::complete |_line, _suggest| {} }
+
+    let mut prompt = "> ";
     let mut stored = ~"";
-    print("Rusp Repl\n> ");
+    println("Rusp Repl");
     let env = rusp::Rusp::empty();
 
-    for io::stdin().each_line |line| {
+    loop {
+        let line = match unsafe { rl::read(prompt) } {
+            Some(line) => line,
+            None => break
+        };
+
+        if !stored.is_empty() { stored.push_char('\n'); }
         stored.push_str(line);
+        unsafe { rl::add_history(line); }
+
         let continue_line = match rusp::parse(stored) {
             Ok(ex) => {
                 // print the AST, since that's useful for debugging
                 println(fmt!("AST: %?" ex));
                 // separate, since this can make the REPL crash
-                println(fmt!("%?", env.eval(ex)));
+                println(match env.eval(ex) {
+                    Ok(evaled) => evaled.to_str(),
+                    Err(e) => {
+                        fmt!("Error: %s", e)
+                    }
+                });
                 false
             }
-            Err(ref er) if er.description == ~"Expecting ')'" => {
-                // unclosed (, so wait for more input
+            Err(ref er) if er.description == ~"Unexpected EOF" => {
+                // it's not invalid yet, just haven't got enough
+                // input, so wait for more
                 true
             }
             Err(ref er) => {
-                println(fmt!("Error: %?", er.description));
+                // give a little caret pointing at the serror
+                println(fmt!("%s^\nParse Error: %s",
+                             str::repeat(" ", er.position.col - 1 + prompt.len()),
+                             er.description));
                 false
             }
         };
 
-        if continue_line {
-            print("+ ");
+        prompt = if continue_line {
+            "+ "
         } else {
             stored = ~"";
-            print("> ");
+            "> "
         }
     }
 }

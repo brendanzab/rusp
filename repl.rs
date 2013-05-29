@@ -19,20 +19,28 @@ fn main() {
         };
 
         if !stored.is_empty() { stored.push_char('\n'); }
+        else if line.is_empty() {
+            // no input and no history
+            loop;
+        }
         stored.push_str(line);
-        unsafe { rl::add_history(line); }
+
+        if !line.is_empty() {
+            unsafe { rl::add_history(line); }
+        }
 
         let continue_line = match rusp::parse(stored) {
             Ok(ex) => {
-                // print the AST, since that's useful for debugging
-                println(fmt!("AST: %?" ex));
-                // separate, since this can make the REPL crash
-                println(match env.eval(&ex) {
+                let to_print = match env.eval(&ex) {
                     Ok(evaled) => evaled.to_str(),
                     Err(e) => {
                         fmt!("Error: %s", e)
                     }
-                });
+                };
+
+                if to_print != ~"()" {
+                    println(to_print);
+                }
                 false
             }
             Err(ref er) if er.description == ~"Unexpected EOF" => {

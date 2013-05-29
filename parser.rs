@@ -233,98 +233,18 @@ pub impl<'self> Parser<'self> {
         }
     }
 
-    /// Parse an if expression, without the leading 'if'
-    fn parse_if(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().chain |test| {
-            do self.parse().chain |conseq| {
-                do self.parse().map |&alt| {
-                    ~If(test.clone(), conseq.clone(), alt)
-                }
-            }
-        }
-    }
-
-    /// Parse a lambda expression, without the leading 'fn'
-    fn parse_lambda(&mut self) -> Result<~Value, ParseFailure> {
-        do self.expect_token(LPAREN).chain |_| {
-            let args = do vec::build |push| {
+    /// Parse the interior of an S-expr
+    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
+        Ok(~List(
+            do vec::build |push| {
                 loop {
-                    match self.parse_ident() {
-                        Ok(ident) => push(ident),
+                    match self.parse() {
+                        Ok(val) => push(val),
                         Err(_) => break,
                     }
                 }
-            };
-
-            match self.expect_token(RPAREN) {
-                Err(err) => Err(err),
-                _ => match self.parse() {
-                    Ok(expr) => Ok(~Lambda(args, expr)),
-                    Err(err) => Err(err)
-                }
             }
-        }
-    }
-
-    /// Parse a quote expression, without the leading 'quote'
-    fn parse_quote(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().map |&expr| {
-            ~Quote(expr)
-        }
-    }
-
-    fn parse_def(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse_ident().chain |ident| {
-            do self.parse().map |&expr| {
-                ~Def(copy ident, expr)
-            }
-        }
-    }
-
-    fn parse_do(&mut self) -> Result<~Value, ParseFailure> {
-        let mut exprs = ~[];
-        loop {
-            match self.parse() {
-                Ok(expr) => exprs.push(expr),
-                Err(_) if exprs.len() >= 1 => break,
-                Err(err) => return Err(err),
-            }
-        }
-        Ok(~Do(exprs))
-    }
-
-    fn parse_apply(&mut self) -> Result<~Value, ParseFailure> {
-        do self.parse().chain |expr| {
-            let args = do vec::build |push| {
-                loop {
-                    match self.parse() {
-                        Ok(expr) => push(expr),
-                        Err(_) => break
-                    }
-                }
-            };
-            Ok(~Apply(expr, args))
-        }
-    }
-
-    /// Parse the interior of an S-expr
-    fn parse_parened(&mut self) -> Result<~Value, ParseFailure> {
-        cond! (
-            (self.eat_token(LIT("if")))    { self.parse_if() }
-            (self.eat_token(LIT("quote"))) { self.parse_quote() }
-            (self.eat_token(LIT("def")))   { self.parse_def() }
-            (self.eat_token(LIT("fn")))    { self.parse_lambda() }
-            (self.eat_token(LIT("do")))    { self.parse_do() }
-            _ {
-                match self.peek_token() {
-                    Ok(Token { val: RPAREN, _ }) => {
-                        // this is a silly hack to parse ()
-                        Ok(~Unit)
-                    }
-                    _ => self.parse_apply()
-                }
-            }
-        )
+        ))
     }
 
     fn parse(&mut self) -> Result<~Value, ParseFailure> {
@@ -356,35 +276,36 @@ mod tests {
 
     #[test]
     fn test_parser_ok() {
-        fn test(s: ~str) {
-            assert_eq!(Parser::new(s).parse().get().to_str(), s);
-        }
+        macro_rules! test(
+            ($s:expr) => ({
+                let src = $s.clone();
+                assert_eq!(Parser::new(src).parse().get().to_str(), src)
+            })
+        )
 
-        test(~"1");
-        test(~"(def a (+ 1 2))");
-        test(~"(do (def a 1) (def b 2) (+ a b))");
+        test!(~"1");
+        test!(~"(def a (+ 1 2))");
+        test!(~"(do (def a 1) (def b 2) (+ a b))");
+        test!(~"(list (1 2) 3 (+ 4 5))");
 
-        test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
+        test!(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
 
-        test(~"(foo bar \"a b c d\")");
+        test!(~"(foo bar \"a b c d\")");
 
-        test(~"(ö ä å)");
+        test!(~"(ö ä å)");
     }
 
     #[test]
     fn test_parser_err() {
-        fn test(s: ~str) {
-             assert!(Parser::new(s).parse().is_err());
-        }
+        macro_rules! test(
+            ($s:expr) => ({
+                let src = $s.clone();
+                assert!(Parser::new(src).parse().is_err())
+            })
+        )
 
-        test(~"(");
-        test(~")");
-
-        test(~"(fn (a b (+ 1 a b)))");
-        test(~"(if true)");
-        test(~"(if true 1 2 3)");
-        test(~"(def a)");
-        test(~"(def a b c)");
-        test(~"(do)");
+        test!(~"(");
+        test!(~")");
+        test!(~"\"no closing quote")
     }
 }

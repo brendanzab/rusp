@@ -113,7 +113,7 @@ impl Rusp {
                     &[~Symbol(~"do"),..tl] => self.eval_do(tl),
                     &[~Symbol(~"quote"),..tl] => self.eval_quote(tl),
                     &[~Symbol(~"fn"),..tl] => self.eval_fn(tl),
-                    &[proc,..params] => fail!("Not yet implemented"),
+                    //&[proc,..params] => fail!("Not yet implemented"),
                     _ => fail!("Not yet implemented"),
                 }
             }
@@ -137,7 +137,7 @@ impl Rusp {
     /// Conditional expression
     fn eval_if(&mut self, vals: &[~Value]) -> EvalResult {
         match vals {
-            &[~pred, ~conseq, ~alt] => {
+            [ref pred, ref conseq, ref alt] => {
                 do self.eval(*pred).chain |val| {
                     match val {
                         Bool(true) => self.eval(*conseq),
@@ -153,7 +153,7 @@ impl Rusp {
     /// Define a new symbol in the environment
     fn eval_def(&mut self, vals: &[~Value]) -> EvalResult {
         match vals {
-            &[~Symbol(ident), value] => {
+            [~Symbol(ref ident), ref value] => {
                 do self.eval(*value).chain |val| {
                     if self.define(ident.clone(), val) {
                         Ok(List(~[]))
@@ -167,10 +167,10 @@ impl Rusp {
     }
 
     /// Evalue each expression in turn, returning the value of the last expression
-    fn eval_do(&self, vals: &[~Value]) -> EvalResult {
+    fn eval_do(&mut self, vals: &[~Value]) -> EvalResult {
         match vals {
-            &[..fst, lst] => {
-                for fst.each |val| {
+            [..fst, lst] => {
+                for fst.each |&val| {
                     match self.eval(val) {
                         Ok(List(ref l)) if l.is_empty() => (),
                         Ok(v) => return Err(fmt!("Expected unit expression, found: %s", v.to_str())),
@@ -186,7 +186,7 @@ impl Rusp {
     /// Return an expression without evaluating it
     fn eval_quote(&self, vals: &[~Value]) -> EvalResult {
         match vals {
-            &[val,..tl] if tl.is_empty() => Ok((**val).clone()),
+            [ref val,..tl] if tl.is_empty() => Ok((**val).clone()),
             _ => Err(~""), // TODO
         }
     }
@@ -194,17 +194,13 @@ impl Rusp {
     /// Evaluate to an anonymous function
     fn eval_fn(&self, vals: &[~Value]) -> EvalResult {
         match vals {
-            &[~List(params), val] => {
+            [~List(ref symbols), ref val] => {
                 let mut idents = ~[];
-                match *params {
-                    List(ref symbols) => {
-                        for symbols.each |symbol| {
-                            match *symbol {
-                                Symbol(ref ident) => idents.push(~ident.clone()),
-                                _ => return Err(fmt!("Expected symbol identifier, found: \
-                                                     %s", symbol.to_str())),
-                            }
-                        }
+                for symbols.each |&symbol| {
+                    match *symbol {
+                        Symbol(ref ident) => idents.push(ident.clone()),
+                        _ => return Err(fmt!("Expected symbol identifier, found: \
+                                             %s", symbol.to_str())),
                     }
                 };
                 Ok(Lambda(idents, val.clone()))

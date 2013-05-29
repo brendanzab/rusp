@@ -276,36 +276,42 @@ mod tests {
 
     #[test]
     fn test_parser_ok() {
-        fn test(s: ~str) {
-            assert_eq!(Parser::new(s).parse().get().to_str(), s);
-        }
+        macro_rules! test(
+            ($s:expr) => ({
+                let src = $s.clone();
+                assert_eq!(Parser::new(src).parse().get().to_str(), src)
+            })
+        )
 
-        test(~"1");
-        test(~"(def a (+ 1 2))");
-        test(~"(do (def a 1) (def b 2) (+ a b))");
-        test(~"(list (1 2) 3 (+ 4 5))");
+        test!(~"1");
+        test!(~"(def a (+ 1 2))");
+        test!(~"(do (def a 1) (def b 2) (+ a b))");
+        test!(~"(list (1 2) 3 (+ 4 5))");
 
-        test(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
+        test!(~"(if true (fn (a b) (+ 1 a b)) (quote (1 2 3)))");
 
-        test(~"(foo bar \"a b c d\")");
+        test!(~"(foo bar \"a b c d\")");
 
-        test(~"(ö ä å)");
+        test!(~"(ö ä å)");
     }
 
     #[test]
     fn test_parser_err() {
-        fn test(s: ~str) {
-             assert!(Parser::new(s).parse().is_err());
-        }
+        macro_rules! test(
+            ($s:expr) => ({
+                let src = $s.clone();
+                assert!(Parser::new(src).parse().is_err())
+            })
+        )
 
-        test(~"(");
-        test(~")");
+        test!(~"(");
+        test!(~")");
 
-        test(~"(fn (a b (+ 1 a b)))");
-        test(~"(if true)");
-        test(~"(if true 1 2 3)");
-        test(~"(def a)");
-        test(~"(def a b c)");
-        test(~"(do)");
+        test!(~"(fn (a b (+ 1 a b)))");
+        test!(~"(if true)");
+        test!(~"(if true 1 2 3)");
+        test!(~"(def a)");
+        test!(~"(def a b c)");
+        test!(~"(do)");
     }
 }

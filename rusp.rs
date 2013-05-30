@@ -132,7 +132,6 @@ impl Rusp {
                     self.eval_call(res, args)
                 }
             }
-            List([]) => Ok(@List(~[])),
             // everything else evaluates to itself
             _ => Ok(value)
         }

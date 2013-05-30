@@ -5,25 +5,30 @@ use super::*;
 pub fn builtins() -> HashMap<Ident, @Value> {
     let mut h = HashMap::new();
 
-    macro_rules! rust_fn ( ($name:ident, $special:ident) => (
-        @Rust(RustFn(|params, env| $name(params, env)), $special)
-    ));
+    macro_rules! rust(
+        (macro, $name:ident) => (
+            @ExternMacro(RustFn(|params, env| $name(params, env)))
+        );
+        (fn, $name:ident) => (
+            @ExternFn(RustFn(|params, env| $name(params, env)))
+        );
+    );
 
     // special forms
-    h.insert(~"def", rust_fn!(builtin_def, true));
-    h.insert(~"if",  rust_fn!(builtin_if, true));
-    h.insert(~"do", rust_fn!(builtin_do, true));
-    h.insert(~"fn", rust_fn!(builtin_fn, true));
-    h.insert(~"macro", rust_fn!(builtin_macro, true));
+    h.insert(~"def", rust!(macro, builtin_def));
+    h.insert(~"if",  rust!(macro, builtin_if));
+    h.insert(~"do", rust!(macro, builtin_do));
+    h.insert(~"fn", rust!(macro, builtin_fn));
+    h.insert(~"macro", rust!(macro, builtin_macro));
     // Return an expression without evaluating it
-    h.insert(~"quote", @Lambda(~[~"a"], @Symbol(~"a"), true));
-    h.insert(~"quasiquote", rust_fn!(builtin_quasiquote, true));
+    h.insert(~"quote", @Macro(~[~"a"], @Symbol(~"a")));
+    h.insert(~"quasiquote", rust!(macro, builtin_quasiquote));
 
     // builtin functions
-    h.insert(~"eval", rust_fn!(builtin_eval, false));
-    h.insert(~"parse", rust_fn!(builtin_parse, false));
-    h.insert(~"list", rust_fn!(builtin_list, false));
-    h.insert(~"print", rust_fn!(builtin_print, false));
+    h.insert(~"eval", rust!(fn, builtin_eval));
+    h.insert(~"parse", rust!(fn, builtin_parse));
+    h.insert(~"list", rust!(fn, builtin_list));
+    h.insert(~"print", rust!(fn, builtin_print));
 
     h
 }
@@ -111,8 +116,8 @@ fn builtin_print(params: &[@Value], _env: @mut Rusp) -> EvalResult {
     Ok(@List(~[]))
 }
 
-/// Common code between functions and macros
-fn builtin_fnmacro(params: &[@Value], no_eval: bool) -> EvalResult {
+/// Evaluate to an anonymous function
+fn builtin_fn(params: &[@Value], _: @mut Rusp) -> EvalResult {
     match params {
         [@List(ref symbols), ref val] => {
             let mut idents = ~[];
@@ -123,20 +128,28 @@ fn builtin_fnmacro(params: &[@Value], no_eval: bool) -> EvalResult {
                                           %s", symbol.to_str())),
                 }
             };
-            Ok(@Lambda(idents, *val, no_eval))
+            Ok(@Fn(idents, *val))
         }
         _ => Err(~"`fn` expects 2 arguments"), // TODO
     }
 }
 
-/// Evaluate to an anonymous function
-fn builtin_fn(params: &[@Value], _: @mut Rusp) -> EvalResult {
-    builtin_fnmacro(params, false)
-}
-
 /// Evaluate to an anonymous macro
 fn builtin_macro(params: &[@Value], _: @mut Rusp) -> EvalResult {
-    builtin_fnmacro(params, true)
+    match params {
+        [@List(ref symbols), ref val] => {
+            let mut idents = ~[];
+            for symbols.each |symbol| {
+                match **symbol {
+                    Symbol(ref ident) => idents.push(ident.clone()),
+                    _ => return Err(fmt!("Expected symbol identifier, found: \
+                                          %s", symbol.to_str())),
+                }
+            };
+            Ok(@Macro(idents, *val))
+        }
+        _ => Err(~"`fn` expects 2 arguments"), // TODO
+    }
 }
 
 /// Quasiquotation, to allow substitutions inside a quoted structure, e.g.
@@ -169,9 +182,15 @@ fn builtin_quasiquote(params: &[@Value], env: @mut Rusp) -> EvalResult {
                 }
                 Ok(@List(new))
             }
-            Lambda(ref args, ref body, special) => {
+            Fn(ref args, ref body) => {
                 match unquote(*body, env) {
-                    Ok(b) => Ok(@Lambda(args.clone(), b, special)),
+                    Ok(b) => Ok(@Fn(args.clone(), b)),
+                    Err(e) => Err(e)
+                }
+            }
+            Macro(ref args, ref body) => {
+                match unquote(*body, env) {
+                    Ok(b) => Ok(@Macro(args.clone(), b)),
                     Err(e) => Err(e)
                 }
             }

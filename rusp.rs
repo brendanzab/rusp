@@ -44,11 +44,10 @@ pub enum Value {
     Str(~str),
     List(~[@Value]),
     Symbol(Ident),
-
-    // the bool arguments control whether the arguments are evaluated
-    // before calling the function (normal function) or not (a macro)
-    Rust(RustFn, bool),
-    Lambda(~[Ident], @Value, bool),
+    Lambda(~[Ident], @Value),
+    Macro(~[Ident], @Value),
+    Rust(RustFn),
+    RustMacro(RustFn),
 }
 
 /// Workaround for `deriving` not working for rust closures
@@ -147,51 +146,49 @@ impl Rusp {
     /// evaluated.
     fn eval_call(@mut self, func: &Value, args: &[@Value]) -> EvalResult {
         match *func {
-            Rust(ref f, no_eval) => {
-                if no_eval {
-                    // macro
-                    (**f)(args, self)
-                } else {
-                    // normal function
-                    let mut evaled_args = ~[];
-                    for args.each |v| {
-                        match self.eval(*v) {
-                            Err(e) => return Err(e),
-                            Ok(evaled) => { evaled_args.push(evaled) }
-                        }
-                    }
-                    (**f)(evaled_args, self)
-                }
-            }
-            Lambda(ref ids, ref body, no_eval) => {
+            Lambda(ref ids, ref body) => {
                 if ids.len() != args.len() {
                     return Err(fmt!("lambda expects %u arguments", ids.len()));
                 }
-
-                // stores the argument bindings for the function
+                // stores the argument bindings of the function
                 let local = Rusp::new_with_outer(self);
-                if no_eval {
-                    // macro
-                    for vec::each2(*ids, args) |id, val| {
-                        match local.define(id.clone(), *val) {
+                for vec::each2(*ids, args) |id, val| {
+                    match self.eval(*val) {
+                        Err(e) => return Err(e),
+                        Ok(v) => match local.define(id.clone(), v) {
                             Err(e) => return Err(e),
                             _ => {}
                         }
                     }
-                } else {
-                    // normal function
-                    for vec::each2(*ids, args) |id, val| {
-                        match self.eval(*val) {
-                            Err(e) => return Err(e),
-                            Ok(v) => match local.define(id.clone(), v) {
-                                Err(e) => return Err(e),
-                                _ => {}
-                            }
-                        }
+                }
+                local.eval(*body)
+            }
+            Macro(ref ids, ref body) => {
+                if ids.len() != args.len() {
+                    return Err(fmt!("macro expects %u arguments", ids.len()));
+                }
+                // stores the argument bindings of the macro
+                let local = Rusp::new_with_outer(self);
+                for vec::each2(*ids, args) |id, val| {
+                    match local.define(id.clone(), *val) {
+                        Err(e) => return Err(e),
+                        _ => {}
                     }
                 }
-
                 local.eval(*body)
+            }
+            Rust(ref f) => {
+                let mut evaled_args = ~[];
+                for args.each |v| {
+                    match self.eval(*v) {
+                        Err(e) => return Err(e),
+                        Ok(evaled) => { evaled_args.push(evaled) }
+                    }
+                }
+                (**f)(evaled_args, self)
+            }
+            RustMacro(ref f) => {
+                (**f)(args, self)
             }
             _ => Err(~"not a function")
         }

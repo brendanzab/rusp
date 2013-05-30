@@ -44,10 +44,10 @@ pub enum Value {
     Str(~str),
     List(~[@Value]),
     Symbol(Ident),
-    Lambda(~[Ident], @Value),
+    Fn(~[Ident], @Value),
     Macro(~[Ident], @Value),
-    Rust(RustFn),
-    RustMacro(RustFn),
+    ExternFn(RustFn),
+    ExternMacro(RustFn),
 }
 
 /// Workaround for `deriving` not working for rust closures
@@ -142,7 +142,7 @@ impl Rusp {
     /// evaluated.
     fn eval_call(@mut self, func: &Value, args: &[@Value]) -> EvalResult {
         match *func {
-            Lambda(ref ids, ref body) => {
+            Fn(ref ids, ref body) => {
                 if ids.len() != args.len() {
                     return Err(fmt!("lambda expects %u arguments", ids.len()));
                 }
@@ -173,7 +173,7 @@ impl Rusp {
                 }
                 local.eval(*body)
             }
-            Rust(ref f) => {
+            ExternFn(ref f) => {
                 let mut evaled_args = ~[];
                 for args.each |v| {
                     match self.eval(*v) {
@@ -183,7 +183,7 @@ impl Rusp {
                 }
                 (**f)(evaled_args, self)
             }
-            RustMacro(ref f) => {
+            ExternMacro(ref f) => {
                 (**f)(args, self)
             }
             _ => Err(~"not a function")

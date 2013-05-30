@@ -7,10 +7,10 @@ pub fn builtins() -> HashMap<Ident, @Value> {
 
     macro_rules! rust(
         (macro, $name:ident) => (
-            @RustMacro(RustFn(|params, env| $name(params, env)))
+            @ExternMacro(RustFn(|params, env| $name(params, env)))
         );
         (fn, $name:ident) => (
-            @Rust(RustFn(|params, env| $name(params, env)))
+            @ExternFn(RustFn(|params, env| $name(params, env)))
         );
     );
 
@@ -128,7 +128,7 @@ fn builtin_fn(params: &[@Value], _: @mut Rusp) -> EvalResult {
                                           %s", symbol.to_str())),
                 }
             };
-            Ok(@Lambda(idents, *val))
+            Ok(@Fn(idents, *val))
         }
         _ => Err(~"`fn` expects 2 arguments"), // TODO
     }
@@ -182,9 +182,9 @@ fn builtin_quasiquote(params: &[@Value], env: @mut Rusp) -> EvalResult {
                 }
                 Ok(@List(new))
             }
-            Lambda(ref args, ref body) => {
+            Fn(ref args, ref body) => {
                 match unquote(*body, env) {
-                    Ok(b) => Ok(@Lambda(args.clone(), b)),
+                    Ok(b) => Ok(@Fn(args.clone(), b)),
                     Err(e) => Err(e)
                 }
             }

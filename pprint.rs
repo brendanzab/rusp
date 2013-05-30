@@ -9,9 +9,7 @@ impl ToStr for Value {
             List(ref vals) => fmt!("(%s)", str::connect(vals.map(|val| val.to_str()), " ")),
             Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
             Symbol(ref id) => id.to_str(),
-            Rust(_) => ~"(extern fn)", // Not sure about this?
-            RustMacro(_) => ~"(extern macro)", // Not sure about this?
-            Lambda(ref ids, ref val) => {
+            Fn(ref ids, ref val) => {
                 fmt!("(fn (%s) %s)",
                      str::connect(ids.map(|id| id.to_str()), " "),
                      val.to_str())
@@ -21,6 +19,8 @@ impl ToStr for Value {
                      str::connect(ids.map(|id| id.to_str()), " "),
                      val.to_str())
             }
+            ExternFn(_) => ~"(extern fn)",
+            ExternMacro(_) => ~"(extern macro)",
         }
     }
 }
@@ -32,7 +32,7 @@ mod tests {
         assert_eq!(List(~[
             @Symbol(~"if"),
             @Bool(true),
-            @List(~[@Lambda(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]))]),
+            @List(~[@Fn(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]))]),
             @Macro(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")])),
             @Bool(true)
         ]).to_str(), ~"(if true ((fn () (quote a))) (macro () (quote a) true)")

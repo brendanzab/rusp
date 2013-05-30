@@ -122,21 +122,17 @@ impl Rusp {
         match *value {
             Symbol(ref id) => {
                 match self.find(id) {
-                    Some(v) => Ok(v),
+                    Some(val) => Ok(val),
                     None => Err(fmt!("The value of `%s` was not defined in this environment",
                                      id.to_str())),
                 }
             }
-            List(ref vals) => {
-                match *vals {
-                    [ref v, .. args] => {
-                        do self.eval(*v).chain |res| {
-                            self.eval_call(res, args)
-                        }
-                    }
-                    [] => Ok(@List(~[])),
+            List([ref vals, .. args]) => {
+                do self.eval(*vals).chain |res| {
+                    self.eval_call(res, args)
                 }
             }
+            List([]) => Ok(@List(~[])),
             // everything else evaluates to itself
             _ => Ok(value)
         }

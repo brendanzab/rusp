@@ -5,11 +5,14 @@ use super::*;
 
 pub fn add_builtins(env: @mut Rusp) {
     macro_rules! rust(
-        (NoEnv: $ty:ident, $name:ident) => (
-            @FnEnv(ExternFn(|params, env| $name(params, env), $ty), None)
+        (Macro, $name:ident) => (
+            @FnEnv(ExternFn(|params, env| $name(params, env), Macro), None)
         );
-        ($ty:ident, $name:ident) => (
-            @FnEnv(ExternFn(|params, env| $name(params, env), $ty), Some(env))
+        (Fn, $name:ident) => (
+            @FnEnv(ExternFn(|params, env| $name(params, env), Fn), Some(env))
+        );
+        (Fn, $name:ident, NoEnv) => (
+            @FnEnv(ExternFn(|params, env| $name(params, env), Fn), None)
         );
     );
 
@@ -20,20 +23,19 @@ pub fn add_builtins(env: @mut Rusp) {
         // are called (e.g. to create a lexically-scoped closure, or
         // to unquote local variables), *not* the global environment,
         // hence NoEnv.
-        (~"fn",                     rust!(NoEnv: Macro, builtin_fn)),
-        (~"macro",                  rust!(NoEnv: Macro, builtin_macro)),
+        (~"fn",                     rust!(Macro, builtin_fn)),
+        (~"macro",                  rust!(Macro, builtin_macro)),
 
-        (~"if",                     rust!(NoEnv: Macro, builtin_if)),
-        (~"do",                     rust!(NoEnv: Macro, builtin_do)),
+        (~"if",                     rust!(Macro, builtin_if)),
+        (~"do",                     rust!(Macro, builtin_do)),
         (~"quote",                  @FnEnv(RuspFn(~[~"a"], @Symbol(~"a"), Macro), None)),
-        (~"quasiquote",             rust!(NoEnv: Macro, builtin_quasiquote)),
+        (~"quasiquote",             rust!(Macro, builtin_quasiquote)),
 
-        // this changes the global scope always
         (~"def",                    rust!(Macro, builtin_def)),
 
 
         // builtin functions
-        (~"eval",                   rust!(Fn, builtin_eval)),
+        (~"eval",                   rust!(Fn, builtin_eval, NoEnv)),
         (~"parse",                  rust!(Fn, builtin_parse)),
         (~"list",                   rust!(Fn, builtin_list)),
         (~"print",                  rust!(Fn, builtin_print)),
@@ -144,7 +146,7 @@ fn builtin_print(params: &[@Value], _: @mut Rusp) -> EvalResult {
 }
 
 /// Shared functionality between creating functions and macros
-fn fn_macro(params: &[@Value], callee_env: @mut Rusp, ty: FnMode) -> EvalResult {
+fn fn_macro(params: &[@Value], callee_env: @mut Rusp, mode: FnMode) -> EvalResult {
     match params {
         [@List(ref symbols), ref val] => {
             let mut idents = ~[];
@@ -155,9 +157,10 @@ fn fn_macro(params: &[@Value], callee_env: @mut Rusp, ty: FnMode) -> EvalResult 
                                           %s", symbol.to_str())),
                 }
             };
-            Ok(@FnEnv(RuspFn(idents, *val, ty), Some(callee_env)))
+            Ok(@FnEnv(RuspFn(idents, *val, mode),
+                      if mode == Fn {Some(callee_env)} else {None}))
         }
-        _ => Err(fmt!("`%s` expects 2 arguments", ty.to_str())), // TODO
+        _ => Err(fmt!("`%s` expects 2 arguments", mode.to_str())),
     }
 }
 
@@ -272,6 +275,7 @@ arithmetic_op!(builtin_mul, "*", mul)
 arithmetic_op!(builtin_div, "/", div)
 arithmetic_op!(builtin_rem, "%", rem)
 
+/// Test equality
 fn builtin_eq(params: &[@Value], _: @mut Rusp) -> EvalResult {
     match params {
         [head, .. rest] => {
@@ -359,5 +363,13 @@ mod tests {
         test_err!("(* \"hi\" 1)");
         test_err!("(/ \"hi\" 1)");
         test_err!("(% \"hi\" 1)");
+    }
+
+    #[test]
+    fn test_eval() {
+        test_ok!("(eval 1)", ~"1");
+        test_ok!("(eval (quote (+ 1 2)))", ~"3");
+
+        test_ok!("((fn (a) (eval (quote a))) 1)", ~"1");
     }
 }

@@ -1,6 +1,7 @@
+//! Built-in functions and macros.
+
 use super::*;
 
-//! Built-in functions and macros.
 
 pub fn add_builtins(env: @mut Rusp) {
     macro_rules! rust(

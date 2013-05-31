@@ -1,53 +1,62 @@
-use std::hashmap::HashMap;
 use super::*;
 
+//! Built-in functions and macros.
 
-pub fn builtins() -> HashMap<Ident, @Value> {
-    let mut h = HashMap::new();
-
+pub fn add_builtins(env: @mut Rusp) {
     macro_rules! rust(
-        (macro, $name:ident) => (
-            @ExternMacro(RustFn(|params, env| $name(params, env)))
+        (NoEnv: $ty:ident, $name:ident) => (
+            @FnEnv(ExternFn(|params, env| $name(params, env), $ty), None)
         );
-        (fn, $name:ident) => (
-            @ExternFn(RustFn(|params, env| $name(params, env)))
+        ($ty:ident, $name:ident) => (
+            @FnEnv(ExternFn(|params, env| $name(params, env), $ty), Some(env))
         );
     );
 
-    // special forms
-    h.insert(~"def",                    rust!(macro, builtin_def));
-    h.insert(~"if",                     rust!(macro, builtin_if));
-    h.insert(~"do",                     rust!(macro, builtin_do));
-    h.insert(~"fn",                     rust!(macro, builtin_fn));
-    h.insert(~"macro",                  rust!(macro, builtin_macro));
-    h.insert(~"quote",                  @Macro(~[~"a"], @Symbol(~"a")));
-    h.insert(~"quasiquote",             rust!(macro, builtin_quasiquote));
+    for [
+        // special forms
 
-    // builtin functions
+        // most of these need to capture the environment where they
+        // are called (e.g. to create a lexically-scoped closure, or
+        // to unquote local variables), *not* the global environment,
+        // hence NoEnv.
+        (~"fn",                     rust!(NoEnv: Macro, builtin_fn)),
+        (~"macro",                  rust!(NoEnv: Macro, builtin_macro)),
 
-    h.insert(~"eval",                   rust!(fn, builtin_eval));
-    h.insert(~"parse",                  rust!(fn, builtin_parse));
-    h.insert(~"list",                   rust!(fn, builtin_list));
-    h.insert(~"print",                  rust!(fn, builtin_print));
+        (~"if",                     rust!(NoEnv: Macro, builtin_if)),
+        (~"do",                     rust!(NoEnv: Macro, builtin_do)),
+        (~"quote",                  @FnEnv(RuspFn(~[~"a"], @Symbol(~"a"), Macro), None)),
+        (~"quasiquote",             rust!(NoEnv: Macro, builtin_quasiquote)),
 
-    h.insert(~"bool?",                  rust!(fn, builtin_is_bool));
-    h.insert(~"int?",                   rust!(fn, builtin_is_int));
-    h.insert(~"float?",                 rust!(fn, builtin_is_float));
-    h.insert(~"string?",                rust!(fn, builtin_is_string));
-    h.insert(~"list?",                  rust!(fn, builtin_is_list));
-    h.insert(~"symbol?",                rust!(fn, builtin_is_symbol));
-    h.insert(~"fn?",                    rust!(fn, builtin_is_fn));
-    h.insert(~"macro?",                 rust!(fn, builtin_is_macro));
-    h.insert(~"extern-fn?",             rust!(fn, builtin_is_extern_fn));
-    h.insert(~"extern-macro?",          rust!(fn, builtin_is_extern_macro));
+        // this changes the global scope always
+        (~"def",                    rust!(Macro, builtin_def)),
 
-    h.insert(~"+",                      rust!(fn, builtin_add));
-    h.insert(~"-",                      rust!(fn, builtin_sub));
-    h.insert(~"*",                      rust!(fn, builtin_mul));
-    h.insert(~"/",                      rust!(fn, builtin_div));
-    h.insert(~"%",                      rust!(fn, builtin_rem));
 
-    h
+        // builtin functions
+        (~"eval",                   rust!(Fn, builtin_eval)),
+        (~"parse",                  rust!(Fn, builtin_parse)),
+        (~"list",                   rust!(Fn, builtin_list)),
+        (~"print",                  rust!(Fn, builtin_print)),
+
+        (~"bool?",                  rust!(Fn, builtin_is_bool)),
+        (~"int?",                   rust!(Fn, builtin_is_int)),
+        (~"float?",                 rust!(Fn, builtin_is_float)),
+        (~"string?",                rust!(Fn, builtin_is_string)),
+        (~"list?",                  rust!(Fn, builtin_is_list)),
+        (~"symbol?",                rust!(Fn, builtin_is_symbol)),
+        (~"fn?",                    rust!(Fn, builtin_is_fn)),
+        (~"macro?",                 rust!(Fn, builtin_is_macro)),
+        (~"extern-fn?",             rust!(Fn, builtin_is_extern_fn)),
+        (~"extern-macro?",          rust!(Fn, builtin_is_extern_macro)),
+
+        (~"+",                      rust!(Fn, builtin_add)),
+        (~"-",                      rust!(Fn, builtin_sub)),
+        (~"*",                      rust!(Fn, builtin_mul)),
+        (~"/",                      rust!(Fn, builtin_div)),
+        (~"%",                      rust!(Fn, builtin_rem)),
+        (~"=",                      rust!(Fn, builtin_eq)),
+    ].each |&(name, func)| {
+        env.define(name, func);
+    }
 }
 
 /// Define a new symbol in the environment
@@ -133,8 +142,8 @@ fn builtin_print(params: &[@Value], _: @mut Rusp) -> EvalResult {
     Ok(@List(~[]))
 }
 
-/// Evaluate to an anonymous function
-fn builtin_fn(params: &[@Value], _: @mut Rusp) -> EvalResult {
+/// Shared functionality between creating functions and macros
+fn fn_macro(params: &[@Value], callee_env: @mut Rusp, ty: FnMode) -> EvalResult {
     match params {
         [@List(ref symbols), ref val] => {
             let mut idents = ~[];
@@ -145,28 +154,20 @@ fn builtin_fn(params: &[@Value], _: @mut Rusp) -> EvalResult {
                                           %s", symbol.to_str())),
                 }
             };
-            Ok(@Fn(idents, *val))
+            Ok(@FnEnv(RuspFn(idents, *val, ty), Some(callee_env)))
         }
-        _ => Err(~"`fn` expects 2 arguments"), // TODO
+        _ => Err(fmt!("`%s` expects 2 arguments", ty.to_str())), // TODO
     }
 }
 
+/// Evaluate to an anonymous function
+fn builtin_fn(params: &[@Value], callee_env: @mut Rusp) -> EvalResult {
+    fn_macro(params, callee_env, Fn)
+}
+
 /// Evaluate to an anonymous macro
-fn builtin_macro(params: &[@Value], _: @mut Rusp) -> EvalResult {
-    match params {
-        [@List(ref symbols), ref val] => {
-            let mut idents = ~[];
-            for symbols.each |symbol| {
-                match **symbol {
-                    Symbol(ref ident) => idents.push(ident.clone()),
-                    _ => return Err(fmt!("Expected symbol identifier, found: \
-                                          %s", symbol.to_str())),
-                }
-            };
-            Ok(@Macro(idents, *val))
-        }
-        _ => Err(~"`fn` expects 2 arguments"), // TODO
-    }
+fn builtin_macro(params: &[@Value], callee_env: @mut Rusp) -> EvalResult {
+    fn_macro(params, callee_env, Macro)
 }
 
 /// Quasiquotation, to allow substitutions inside a quoted structure, e.g.
@@ -199,15 +200,10 @@ fn builtin_quasiquote(params: &[@Value], env: @mut Rusp) -> EvalResult {
                 }
                 Ok(@List(new))
             }
-            Fn(ref args, ref body) => {
-                match unquote(*body, env) {
-                    Ok(b) => Ok(@Fn(args.clone(), b)),
-                    Err(e) => Err(e)
-                }
-            }
-            Macro(ref args, ref body) => {
-                match unquote(*body, env) {
-                    Ok(b) => Ok(@Macro(args.clone(), b)),
+            FnEnv(RuspFn(ref args, ref body, ref fn_type), ref subenv) => {
+                match unquote(*body, subenv.get_or_default(env)) {
+                    Ok(b) => Ok(@FnEnv(RuspFn(args.clone(), b, fn_type.clone()),
+                                       subenv.clone())),
                     Err(e) => Err(e)
                 }
             }
@@ -238,31 +234,30 @@ type_pred!(builtin_is_float, Float(*))
 type_pred!(builtin_is_string, Str(*))
 type_pred!(builtin_is_list, List(*))
 type_pred!(builtin_is_symbol, Symbol(*))
-type_pred!(builtin_is_fn, Fn(*))
-type_pred!(builtin_is_macro, Macro(*))
-type_pred!(builtin_is_extern_fn, ExternFn(*))
-type_pred!(builtin_is_extern_macro, ExternMacro(*))
+type_pred!(builtin_is_fn, FnEnv(RuspFn(_, _, Fn), _))
+type_pred!(builtin_is_macro, FnEnv(RuspFn(_, _, Macro), _))
+type_pred!(builtin_is_extern_fn, FnEnv(ExternFn(_, Fn), _))
+type_pred!(builtin_is_extern_macro, FnEnv(ExternFn(_, Macro), _))
 
 macro_rules! arithmetic_op(
     ($name:ident, $symbol:expr, $method:ident) => (
-        fn $name(params: &[@Value], env: @mut Rusp) -> EvalResult {
+        fn $name(params: &[@Value], _: @mut Rusp) -> EvalResult {
             if params.len() < 2 {
                 return Err(fmt!("`%s` expects at least 2 arguments", $symbol));
             }
             let mut result = *params.head();
             for params.tail().each |&val| {
-                match (result, env.eval(val)) {
+                match (result, val) {
                     // Basic operations between values of the same type
-                    (@Int(prev), Ok(@Int(i))) => result = @Int(prev.$method(&i)),
-                    (@Float(prev), Ok(@Float(f))) => result = @Float(prev.$method(&f)),
+                    (@Int(prev), @Int(i)) => result = @Int(prev.$method(&i)),
+                    (@Float(prev), @Float(f)) => result = @Float(prev.$method(&f)),
                     // Handle numeric promotions
-                    (@Int(prev), Ok(@Float(f))) => result = @Float((prev as float).$method(&f)),
-                    (@Float(prev), Ok(@Int(i))) => result = @Float(prev.$method(&(i as float))),
+                    (@Int(prev), @Float(f)) => result = @Float((prev as float).$method(&f)),
+                    (@Float(prev), @Int(i)) => result = @Float(prev.$method(&(i as float))),
                     // Type errors
-                    (@Float(_), Ok(ref v)) => return Err(fmt!("Expected float but found: %s", v.to_str())),
-                    (@Int(_), Ok(ref v)) => return Err(fmt!("Expected integer but found: %s", v.to_str())),
-                    (ref prev, Ok(_)) => return Err(fmt!("Expected number but found: %s", prev.to_str())),
-                    (_, Err(err)) => return Err(err),
+                    (@Float(_), ref v) => return Err(fmt!("Expected float but found: %s", v.to_str())),
+                    (@Int(_), ref v) => return Err(fmt!("Expected integer but found: %s", v.to_str())),
+                    (ref prev, _) => return Err(fmt!("Expected number but found: %s", prev.to_str())),
                 }
             }
             Ok(result)
@@ -275,6 +270,19 @@ arithmetic_op!(builtin_sub, "-", sub)
 arithmetic_op!(builtin_mul, "*", mul)
 arithmetic_op!(builtin_div, "/", div)
 arithmetic_op!(builtin_rem, "%", rem)
+
+fn builtin_eq(params: &[@Value], _: @mut Rusp) -> EvalResult {
+    match params {
+        [head, .. rest] => {
+            for rest.each |&val| {
+                // TODO handle numeric promotions? i.e. 1.0 == 1?
+                if !(val == head) { return Ok(@Bool(false)); }
+            }
+            Ok(@Bool(true))
+        }
+        [] => Err(fmt!("`=` expects at least 1 argument"))
+    }
+}
 
 #[cfg(test)]
 mod tests {

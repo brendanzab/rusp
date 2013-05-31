@@ -9,18 +9,19 @@ impl ToStr for Value {
             List(ref vals) => fmt!("(%s)", str::connect(vals.map(|val| val.to_str()), " ")),
             Str(ref s) => fmt!("\"%s\"", str::escape_default(*s)),
             Symbol(ref id) => id.to_str(),
-            Fn(ref ids, ref val) => {
-                fmt!("(fn (%s) %s)",
-                     str::connect(ids.map(|id| id.to_str()), " "),
-                     val.to_str())
+            FnEnv(ref func, _) => {
+                match *func {
+                    RuspFn(ref ids, ref val, ref fn_type) => {
+                        fmt!("(%s (%s) %s)",
+                             fn_type.to_str(),
+                             str::connect(ids.map(|id| id.to_str()), " "),
+                             val.to_str())
+                    }
+                    ExternFn(_, ref fn_type) => {
+                        fmt!("(extern %s)", fn_type.to_str())
+                    }
+                }
             }
-            Macro(ref ids, ref val) => {
-                fmt!("(macro (%s) %s)",
-                     str::connect(ids.map(|id| id.to_str()), " "),
-                     val.to_str())
-            }
-            ExternFn(_) => ~"(extern fn)",
-            ExternMacro(_) => ~"(extern macro)",
         }
     }
 }
@@ -32,8 +33,8 @@ mod tests {
         assert_eq!(List(~[
             @Symbol(~"if"),
             @Bool(true),
-            @List(~[@Fn(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]))]),
-            @Macro(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")])),
+            @List(~[@FnEnv(RuspFn(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]), Fn), None)]),
+            @FnEnv(RuspFn(~[], @List(~[@Symbol(~"quote"), @Symbol(~"a")]), Macro), None),
             @Bool(true)
         ]).to_str(), ~"(if true ((fn () (quote a))) (macro () (quote a) true)")
     }

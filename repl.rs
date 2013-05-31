@@ -31,20 +31,13 @@ fn main() {
 
         let continue_line = match rusp::parse(stored) {
             Ok(exprs) => {
-                let mut to_print = ~"()";
                 for exprs.each |ex| {
-                    match env.eval(*ex) {
-                        Ok(evaled) => to_print = evaled.to_str(),
-                        Err(e) => {
-                            to_print = fmt!("Error: %s", e);
-                            break;
-                        }
-                    }
+                    println(match env.eval(*ex) {
+                        Ok(evaled) => evaled.to_str(),
+                        Err(e) => fmt!("Error: %s", e)
+                    })
                 }
 
-                if to_print != ~"()" {
-                    println(to_print);
-                }
                 false
             }
             Err(ref er) if er.description == ~"Unexpected EOF" => {

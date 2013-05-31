@@ -44,26 +44,121 @@ pub enum Value {
     Str(~str),
     List(~[@Value]),
     Symbol(Ident),
-    Fn(~[Ident], @Value),
-    Macro(~[Ident], @Value),
-    ExternFn(RustFn),
-    ExternMacro(RustFn),
+    /// A function and the environment it should be called in; The
+    /// environment is optional, since Some(env) gives lexical
+    /// scoping, None gives dynamic scoping since callee substitute
+    /// its own environment (e.g. to create a closure).
+    FnEnv(Fn, Option<@mut Rusp>)
 }
 
-/// Workaround for `deriving` not working for rust closures
-pub struct RustFn(@fn(params: &[@Value], env: @mut Rusp) -> EvalResult);
 
-impl Eq for RustFn {
-    fn eq(&self, _: &RustFn) -> bool {
-        fail!("Cannot test equality of Rust functions (yet?).");
+/// Flags the mode with which functions are called, `Fn` if arguments
+/// are evaluated, `Macro` if not
+#[deriving(Eq, Clone)]
+pub enum FnMode { Fn, Macro }
+
+impl ToStr for FnMode {
+    fn to_str(&self) -> ~str {
+        match *self {
+            Fn => ~"fn",
+            Macro => ~"macro"
+        }
     }
-    fn ne(&self, other: &RustFn) -> bool { !self.eq(other) }
 }
 
-impl Clone for RustFn {
-    fn clone(&self) -> RustFn {
-        // copy the pointer
-        *self
+
+/// Callables
+pub enum Fn {
+    /// A Rusp function
+    RuspFn(~[Ident], @Value, FnMode),
+    /// A FFI function that calls into Rust
+    ExternFn(@fn(params: &[@Value], env: @mut Rusp) -> EvalResult, FnMode),
+}
+
+impl Eq for Fn {
+    fn eq(&self, other: &Fn) -> bool {
+        match (self, other) {
+            (&RuspFn(ref s_ids, ref s_body, ref s_mode),
+             &RuspFn(ref o_ids, ref o_body, ref o_mode)) => {
+                *s_mode == *o_mode && *s_ids == *o_ids && s_body == o_body
+            }
+            (&ExternFn(_, ref s_mode),
+             &ExternFn(_, ref o_mode)) => {
+                if *s_mode == *o_mode {
+                    // TODO: pointer equality to compare extern fns
+                    fail!("can't compare extern fns")
+                } else {
+                    false
+                }
+            }
+            _ => false
+        }
+    }
+    fn ne(&self, other: &Fn) -> bool { !self.eq(other) }
+}
+impl Clone for Fn {
+    fn clone(&self) -> Fn {
+        match *self {
+            RuspFn(ref ids, ref body, ref mode) => RuspFn(ids.clone(), body.clone(), mode.clone()),
+            ExternFn(f, mode) => ExternFn(f, mode.clone())
+        }
+    }
+}
+
+impl Fn {
+    /// Eval a call of self, eval-ing the arguments in `arg_env`
+    /// (unless it is a macro), and using `paent_env` as the parent
+    /// environment of the function call.
+    fn call(&self,
+            arg_env: @mut Rusp, parent_env: @mut Rusp,
+            args: &[@Value]) -> EvalResult {
+        match *self {
+            RuspFn(ref ids, ref body, fn_mode) => {
+                if ids.len() != args.len() {
+                    return Err(fmt!("%s expects %u arguments", fn_mode.to_str(), ids.len()));
+                }
+
+                // stores the argument bindings of the function/macro
+                let local = Rusp::new_with_outer(parent_env);
+                match fn_mode {
+                    Fn => {
+                        // evaluate each argument
+                        for vec::each2(*ids, args) |id, val| {
+                            match arg_env.eval(*val) {
+                                Err(e) => return Err(e),
+                                Ok(v) => match local.define(id.clone(), v) {
+                                    Err(e) => return Err(e),
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Macro => {
+                        // no evaluation
+                        for vec::each2(*ids, args) |id, val| {
+                            match local.define(id.clone(), *val) {
+                                Err(e) => return Err(e),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                local.eval(*body)
+            }
+            ExternFn(ref f, Fn) => {
+                let mut evaled_args = ~[];
+                for args.each |v| {
+                    match arg_env.eval(*v) {
+                        Err(e) => return Err(e),
+                        Ok(evaled) => { evaled_args.push(evaled) }
+                    }
+                }
+                (*f)(evaled_args, parent_env)
+            }
+            ExternFn(ref f, Macro) => {
+                (*f)(args, parent_env)
+            }
+        }
     }
 }
 
@@ -86,10 +181,9 @@ impl Rusp {
 
     /// Initializes an environment containing the default built-ins
     pub fn new() -> @mut Rusp {
-        @mut Rusp {
-            values: builtins::builtins(),
-            outer: None
-        }
+        let env = Rusp::empty();
+        builtins::add_builtins(env);
+        env
     }
 
     /// Initializes a new environment with a parent environment
@@ -123,69 +217,24 @@ impl Rusp {
             Symbol(ref id) => {
                 match self.find(id) {
                     Some(val) => Ok(val),
-                    None => Err(fmt!("The value of `%s` was not defined in this environment",
+                    None => Err(fmt!("`%s` was not defined in this environment",
                                      id.to_str())),
                 }
             }
             List([ref vals, .. args]) => {
                 do self.eval(*vals).chain |res| {
-                    self.eval_call(res, args)
+                    match *res {
+                        FnEnv(ref func, opt_env) => {
+                            func.call(self, // environment in which to eval arguments
+                                      opt_env.get_or_default(self), // parent environment of function
+                                      args)
+                        }
+                        _ => Err(~"not a function")
+                    }
                 }
             }
             // everything else evaluates to itself
             _ => Ok(value)
-        }
-    }
-
-    /// Eval a call using `func`, which should have been previously
-    /// evaluated.
-    fn eval_call(@mut self, func: &Value, args: &[@Value]) -> EvalResult {
-        match *func {
-            Fn(ref ids, ref body) => {
-                if ids.len() != args.len() {
-                    return Err(fmt!("lambda expects %u arguments", ids.len()));
-                }
-                // stores the argument bindings of the function
-                let local = Rusp::new_with_outer(self);
-                for vec::each2(*ids, args) |id, val| {
-                    match self.eval(*val) {
-                        Err(e) => return Err(e),
-                        Ok(v) => match local.define(id.clone(), v) {
-                            Err(e) => return Err(e),
-                            _ => {}
-                        }
-                    }
-                }
-                local.eval(*body)
-            }
-            Macro(ref ids, ref body) => {
-                if ids.len() != args.len() {
-                    return Err(fmt!("macro expects %u arguments", ids.len()));
-                }
-                // stores the argument bindings of the macro
-                let local = Rusp::new_with_outer(self);
-                for vec::each2(*ids, args) |id, val| {
-                    match local.define(id.clone(), *val) {
-                        Err(e) => return Err(e),
-                        _ => {}
-                    }
-                }
-                local.eval(*body)
-            }
-            ExternFn(ref f) => {
-                let mut evaled_args = ~[];
-                for args.each |v| {
-                    match self.eval(*v) {
-                        Err(e) => return Err(e),
-                        Ok(evaled) => { evaled_args.push(evaled) }
-                    }
-                }
-                (**f)(evaled_args, self)
-            }
-            ExternMacro(ref f) => {
-                (**f)(args, self)
-            }
-            _ => Err(~"not a function")
         }
     }
 }
@@ -193,6 +242,10 @@ impl Rusp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn eval_string(env: @mut Rusp, s: &str) -> EvalResult {
+        env.eval(parse(s).unwrap()[0])
+    }
 
     #[test]
     fn test_env() {
@@ -303,22 +356,34 @@ mod tests {
     #[test]
     fn test_fn() {
         let env = Rusp::new();
-        env.eval(parse("(def f (fn (a b) a))").unwrap()[0]);
-        assert_eq!(env.eval(parse("(f 1 2)").unwrap()[0]).unwrap(), @Int(1));
+        eval_string(env, "(def f (fn (a b) a))");
+        assert_eq!(eval_string(env, "(f 1 2)").unwrap(), @Int(1));
 
-        assert!(env.eval(parse("(f 1)").unwrap()[0]).is_err());
+        assert!(eval_string(env, "(f 1)").is_err());
     }
 
     #[test]
     fn test_macro() {
         let env = Rusp::new();
-        env.eval(parse("(def m (macro (a) a))").unwrap()[0]);
-        env.eval(parse("(def f (fn (a) a))").unwrap()[0]);
-        env.eval(parse("(def x 1)").unwrap()[0]);
+        eval_string(env, "(def m (macro (a) a))");
+        eval_string(env, "(def f (fn (a) a))");
+        eval_string(env, "(def x 1)");
 
         // check the semantics of macros vs fn, x is not evaluated for
         // `m`, but is for `f`.
-        assert_eq!(env.eval(parse("(m x)").unwrap()[0]).unwrap(), @Symbol(~"x"));
-        assert_eq!(env.eval(parse("(f x)").unwrap()[0]).unwrap(), @Int(1));
+        assert_eq!(eval_string(env, "(m x)").unwrap(), @Symbol(~"x"));
+        assert_eq!(eval_string(env, "(f x)").unwrap(), @Int(1));
+    }
+
+    #[test]
+    fn test_lexical_scoping() {
+        let env = Rusp::new();
+        eval_string(env, "(def a 10)");
+        eval_string(env, "(def curried-add (fn (a) (fn (b) (+ a b))))");
+
+        assert_eq!(eval_string(env, "((curried-add 1) 2)").unwrap(), @Int(3));
+
+        eval_string(env, "(def b 10)");
+        assert_eq!(eval_string(env, "((curried-add 1) 2)").unwrap(), @Int(3));
     }
 }

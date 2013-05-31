@@ -32,7 +32,7 @@ pub fn add_builtins(env: @mut Rusp) {
         (~"quasiquote",             rust!(Macro, builtin_quasiquote)),
 
         (~"def",                    rust!(Macro, builtin_def)),
-
+        (~"match",                  rust!(Macro, builtin_match)),
 
         // builtin functions
         (~"eval",                   rust!(Fn, builtin_eval, NoEnv)),
@@ -289,6 +289,107 @@ fn builtin_eq(params: &[@Value], _: @mut Rusp) -> EvalResult {
     }
 }
 
+/// matching, e.g. `(match 1 (1 "is one") (_ "is not one"))` where the
+/// grammar is `(match expr [(pat body)]*)`. A pattern is a literal
+/// number or string, a symbol (which get bound to the appropriate
+/// part of `expr`) and lists of patterns. A list can be sliced if the
+/// last two tokens are `.. symbol`, for any symbol. e.g. `(match (1 2
+/// 3) ((1 .. b) b))` evaluates to (2 3). (NB. The `_` has no special
+/// meaning, but is a valid symbol.) If no patterns match, the
+/// invocation has value ().
+///
+/// This creates a new environment, even if there are no bindings.
+fn builtin_match(params: &[@Value], env: @mut Rusp) -> EvalResult {
+    match params {
+        [match_expr, .. arms] => {
+            let evaled = match env.eval(match_expr) {
+                Ok(res) => res,
+                Err(e) => return Err(e)
+            };
+
+            for arms.each |&arm| {
+                match arm {
+                    @List([pat, body]) => {
+                        match matches_pattern(pat, evaled) {
+                            Err(e) => return Err(e),
+                            Ok(None) => loop, // didn't match
+                            Ok(Some(bindings)) => {
+                                let local_env = Rusp::new_with_outer(env);
+
+                                for bindings.each |&(name, value)| {
+                                    local_env.define(name, value);
+                                }
+
+                                return local_env.eval(body);
+                            }
+                        }
+                    }
+                    _ => return Err(~"`match` arms should consist of a pattern and a body")
+                }
+            }
+
+
+        }
+        [] => return Err(~"`match` expects at least 1 argument")
+    }
+
+    return Ok(@List(~[]));
+
+    // TODO, fewer allocations
+    /// Err(..) means an invalid pattern, Ok(None) means valid
+    /// pattern, but it didn't match, and Ok(Some(vec)) means the
+    /// pattern matched and gives the idents and what they should bind
+    /// to.
+    fn matches_pattern(pat: @Value, expr: @Value) -> Result<Option<~[(Ident, @Value)]>, ~str> {
+        let mut bindings = ~[];
+
+        match (pat, expr) {
+            // do nothing if they match, otherwise fall through to the _
+            (@Int(i1), @Int(i2)) if i1 == i2 => {}
+            (@Float(f1), @Float(f2)) if f1 == f2 => {}
+            (@Str(ref s1), @Str(ref s2)) if *s1 == *s2 => {}
+
+            (@Symbol(ref id), anything) => { bindings.push((id.clone(), anything)) }
+            (@List(ref pat_list), @List(ref expr_list)) => {
+                for pat_list.eachi |i, &subpat| {
+                    if i >= expr_list.len() { // too many patterns for this list
+                        return Ok(None);
+                    }
+
+                    if subpat == @Symbol(~"..") { // slices
+                        if i != pat_list.len() - 2 {
+                            return Err(~"`..` can only appear as the second \
+                                         last token in a match pattern");
+                        }
+
+                        match pat_list[i+1] {
+                            @Symbol(ref id) => {
+                                let sublist = @List(expr_list.slice(i,
+                                                                    expr_list.len()).to_owned());
+                                bindings.push((id.clone(), sublist));
+                                break
+                            }
+                            _ => return Err(~"expecting a symbol after `..` in a match pattern")
+                        }
+                    }
+
+                    // check that this subpattern of the list matches
+                    match matches_pattern(subpat, (*expr_list)[i]) {
+                        // yes
+                        Ok(Some(new_bindings)) => bindings.push_all(new_bindings),
+                        // no, either no match or an error
+                        other => return other
+                    }
+                }
+            }
+            (@FnEnv(*), _) => { return Err(~"invalid `match` pattern: fn"); }
+            // binding failed
+            _ => { return Ok(None) }
+        }
+        Ok(Some(bindings))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::*;
@@ -371,5 +472,21 @@ mod tests {
         test_ok!("(eval (quote (+ 1 2)))", ~"3");
 
         test_ok!("((fn (a) (eval (quote a))) 1)", ~"1");
+    }
+
+    #[test]
+    fn test_match() {
+        test_ok!("(match 1 (1 true) (_ false))", ~"true");
+        test_ok!("(match (list 1 2 3) ((2 .. b) false) ((1 .. b) b))", ~"(2 3)");
+        test_ok!("(match 1)", ~"()");
+        test_ok!("(match 1 (2 2) (3 3) (4 4))", ~"()");
+        test_ok!("(match \"str\" (1 false) (\"str\" true))", ~"true");
+        test_ok!("(match (list 1 2 (list 3 4)) ((1 2 (3 4)) true) (\"str\" false))", ~"true");
+    }
+
+    #[test]
+    #[should_fail]
+    fn test_match_invalid_pattern() {
+        test_ok!("(match 1 (2))", ~"()");
     }
 }

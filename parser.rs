@@ -66,17 +66,22 @@ impl<'self> Parser<'self> {
 
     pub fn parse(&mut self) -> ParseResult {
         self.skip_whitespace();
-        if self.eat('(') {
-            self.parse_list()
-        } else {
-            match self.peek() {
-                '.' if self.eat_str("..") => Ok(@Symbol(~"..")),
-                '0'..'9' | '.' => self.parse_number(),
-                't' if self.eat_str("true") => Ok(@Bool(true)),
-                'f' if self.eat_str("false") => Ok(@Bool(false)),
-                '"' => self.parse_string(),
-                ')' => self.fail(~"Unexpected ')'"),
-                _ => self.parse_ident()
+
+        match self.one_of(['(', '[', '{']) {
+            Some('(') => self.parse_list(')', |v| @List(v)),
+            Some('[') => self.parse_list(']', |v| @List(v)), // TODO
+            Some('{') => self.parse_list('}', |v| @List(v)), // TODO
+            _ => {
+                let c = self.peek();
+                match c {
+                    '.' if self.eat_str("..") => Ok(@Symbol(~"..")),
+                    '0'..'9' | '.' => self.parse_number(),
+                    't' if self.eat_str("true") => Ok(@Bool(true)),
+                    'f' if self.eat_str("false") => Ok(@Bool(false)),
+                    '"' => self.parse_string(),
+                    ')' | ']' | '}' => self.fail(fmt!("Unexpected '%c'", c)),
+                    _ => self.parse_ident()
+                }
             }
         }
     }
@@ -85,15 +90,15 @@ impl<'self> Parser<'self> {
         self.src_pos >= self.src_len
     }
 
-    priv fn parse_list(&mut self) -> ParseResult {
+    priv fn parse_list(&mut self, closing: char, ctor: &fn(~[@Value]) -> @Value) -> ParseResult {
         let mut vals = ~[];
         loop {
             if self.eof() {
-                return self.fail(~"Unexpected EOF, expected ')'");
+                return self.fail(fmt!("Unexpected EOF, expected '%c'", closing));
             }
 
-            if self.eat(')') {
-                return Ok(@List(vals));
+            if self.eat(closing) {
+                return Ok(ctor(vals));
             }
 
             match self.parse() {
@@ -111,13 +116,16 @@ impl<'self> Parser<'self> {
 
         loop {
             match self.src.char_at(self.src_pos+len) {
-                '.' if seen_point => return self.fail(~"Unexpected character '.' while parsing number"),
-                '.' if !seen_point => {
-                    len += 1; // I know that '.' is a single byte
-                    seen_point = true;
+                '.' => {
+                    if seen_point {
+                        return self.fail(~"Unexpected character '.' while parsing number");
+                    } else {
+                        len += 1; // I know that '.' is a single byte
+                        seen_point = true;
+                    }
                 }
                 '0'..'9' => len += 1, // Same here
-                ')' => break,
+                ')' | ']' | '}' => break,
                 c if c.is_whitespace() => break,
                 c => {
                     return self.fail(fmt!("Unexpected character '%c' while parsing number", c));
@@ -197,7 +205,7 @@ impl<'self> Parser<'self> {
                 c if self.char_is_read_macro(c) => {
                     return self.fail(fmt!("Unexpected character '%c' while parsing ident", c));
                 }
-                ')' => return Ok(@Symbol(ident)),
+                ')' | ']' | '}' => return Ok(@Symbol(ident)),
                 c if c.is_whitespace() => return Ok(@Symbol(ident)),
                 c => ident.push_char(c),
             }
@@ -231,6 +239,15 @@ impl<'self> Parser<'self> {
         } else {
             self.src.char_at(self.src_pos)
         }
+    }
+
+    priv fn one_of(&mut self, chars: &[char]) -> Option<char> {
+        for chars.each |&c| {
+            if self.eat(c) {
+                return Some(c);
+            }
+        }
+        None
     }
 
     priv fn eat(&mut self, c: char) -> bool {

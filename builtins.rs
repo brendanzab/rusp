@@ -414,7 +414,7 @@ mod tests {
     macro_rules! test_ok(
         ($src:expr, $expected:expr) => (
             assert_eq!(Rusp::new().eval(
-                @Parser::new($src).parse().get()
+                Parser::new($src).parse().get()
             ).get().to_str(), $expected);
         )
     )
@@ -422,7 +422,7 @@ mod tests {
     macro_rules! test_err(
         ($src:expr) => (
             assert!(Rusp::new().eval(
-                @Parser::new($src).parse().get()
+                Parser::new($src).parse().get()
             ).is_err());
         )
     )

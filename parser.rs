@@ -66,10 +66,10 @@ impl<'self> Parser<'self> {
 
     pub fn parse(&mut self) -> ParseResult {
         self.skip_whitespace();
-        if self.eat_char('(') {
+        if self.eat('(') {
             self.parse_list()
         } else {
-            match self.peek_char() {
+            match self.peek() {
                 '.' if self.eat_str("..") => Ok(@Symbol(~"..")),
                 '0'..'9' | '.' => self.parse_number(),
                 't' if self.eat_str("true") => Ok(@Bool(true)),
@@ -92,7 +92,7 @@ impl<'self> Parser<'self> {
                 return self.fail(~"Unexpected EOF, expected ')'");
             }
 
-            if self.eat_char(')') {
+            if self.eat(')') {
                 return Ok(@List(vals));
             }
 
@@ -107,7 +107,7 @@ impl<'self> Parser<'self> {
 
     priv fn parse_number(&mut self) -> ParseResult {
         let mut len = 0;
-        let mut seen_point = self.eat_char('.');
+        let mut seen_point = self.peek() == '.';
 
         loop {
             match self.src.char_at(self.src_pos+len) {
@@ -129,7 +129,7 @@ impl<'self> Parser<'self> {
         }
 
         let slice = self.slice_src(len);
-        self.advance_chars(slice.char_len());
+        self.advance(slice.char_len());
         if seen_point {
             let n = float::from_str(slice).unwrap();
             Ok(@Float(n))
@@ -140,18 +140,16 @@ impl<'self> Parser<'self> {
     }
 
     priv fn parse_string(&mut self) -> ParseResult {
-        if self.eat_char('"') {
+        if self.eat('"') {
             let mut s = ~"";
 
             loop {
-                match self.peek_char() {
+                match self.pop() {
                     '"' => {
-                        self.advance_chars(1);
                         return Ok(@Str(s));
                     }
                     '\\' => {
-                        self.advance_chars(1);
-                        match self.peek_char() {
+                        match self.peek() {
                             // Minimal list of escape characters, most common ones
                             '0' => s.push_char(0x00 as char),
                             'a' => s.push_char(0x07 as char),
@@ -168,14 +166,13 @@ impl<'self> Parser<'self> {
                             EOF => return self.fail(~"Unexpected EOF while parsing escape"),
                             _   => loop,
                         }
-                        self.advance_chars(1);
+                        self.advance(1);
                     }
                     EOF => {
                         return self.fail(~"Unexpected EOF while parsing string");
                     }
                     a => {
                         s.push_char(a);
-                        self.advance_chars(1);
                     }
                 }
             }
@@ -186,7 +183,7 @@ impl<'self> Parser<'self> {
     }
 
     priv fn parse_ident(&mut self) -> ParseResult {
-        let c = self.peek_char();
+        let c = self.peek();
 
         if self.char_is_read_macro(c) {
             return self.eval_read_macro(c);
@@ -195,22 +192,22 @@ impl<'self> Parser<'self> {
         let mut ident = ~"";
 
         loop {
-            match self.peek_char() {
+            match self.peek() {
                 EOF => return self.fail(~"Unexpected EOF while parsing ident"),
                 c if self.char_is_read_macro(c) => {
                     return self.fail(fmt!("Unexpected character '%c' while parsing ident", c));
                 }
                 ')' => return Ok(@Symbol(ident)),
                 c if c.is_whitespace() => return Ok(@Symbol(ident)),
-                c => ident.push_char(c)
+                c => ident.push_char(c),
             }
-            self.advance_chars(1);
+            self.advance(1);
         }
     }
 
     priv fn skip_whitespace(&mut self) {
-        while self.peek_char().is_whitespace() {
-            self.advance_chars(1)
+        while self.peek().is_whitespace() {
+            self.advance(1)
         }
     }
 
@@ -222,7 +219,13 @@ impl<'self> Parser<'self> {
         self.src.slice(self.src_pos, self.src_pos+len)
     }
 
-    priv fn peek_char(&self) -> char {
+    priv fn pop(&mut self) -> char {
+        let c = self.peek();
+        self.advance(1);
+        c
+    }
+
+    priv fn peek(&self) -> char {
         if self.eof() {
             EOF
         } else {
@@ -230,9 +233,9 @@ impl<'self> Parser<'self> {
         }
     }
 
-    priv fn eat_char(&mut self, c: char) -> bool {
-        if self.peek_char() == c {
-            self.advance_chars(1);
+    priv fn eat(&mut self, c: char) -> bool {
+        if self.peek() == c {
+            self.advance(1);
             true
         } else {
             false
@@ -246,7 +249,7 @@ impl<'self> Parser<'self> {
         } else {
             let slice = self.slice_src(slen);
             if slice == s {
-                self.advance_chars(s.char_len());
+                self.advance(s.char_len());
                 true
             } else {
                 false
@@ -254,7 +257,8 @@ impl<'self> Parser<'self> {
         }
     }
 
-    priv fn advance_chars(&mut self, n: uint) {
+    priv fn advance(&mut self, n: uint) {
+        if self.eof() { return; }
         let mut n = n;
         while n > 0 {
             let str::CharRange {ch:c, next:next} = str::char_range_at(self.src, self.src_pos);
@@ -276,7 +280,7 @@ impl<'self> Parser<'self> {
     }
 
     priv fn eval_read_macro(&mut self, _: char) -> ParseResult {
-        self.advance_chars(1);
+        self.advance(1);
         self.parse()
     }
 }
@@ -304,6 +308,8 @@ mod tests {
         test!(~"(foo bar \"a b c d\")");
 
         test!(~"(ö ä å)");
+
+        test!(~"\"new-line:\\n\"");
     }
 
     #[test]

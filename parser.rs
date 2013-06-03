@@ -15,6 +15,12 @@
 
 use super::*;
 
+use std::str;
+use std::vec;
+use std::char;
+use std::int;
+use std::float;
+
 ///
 /// A position in a source string
 ///

@@ -16,6 +16,8 @@
 extern mod rusp;
 extern mod extra;
 
+use std::str;
+
 // for a nicer prompt, with history etc.
 use extra::rl;
 

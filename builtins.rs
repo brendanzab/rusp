@@ -17,6 +17,7 @@
 
 use super::*;
 
+use std::str;
 
 pub fn add_builtins(env: @mut Rusp) {
     macro_rules! rust(

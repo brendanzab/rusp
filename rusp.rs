@@ -25,6 +25,8 @@
 
 use std::hashmap::*;
 
+use std::vec;
+
 pub mod builtins;
 pub mod parser;
 pub mod pprint;

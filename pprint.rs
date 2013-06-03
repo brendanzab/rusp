@@ -15,6 +15,8 @@
 
 use super::*;
 
+use std::str;
+
 impl ToStr for Value {
     fn to_str(&self) -> ~str {
         match *self {

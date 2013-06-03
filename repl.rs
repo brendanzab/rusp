@@ -57,7 +57,7 @@ fn main() {
 
                 false
             }
-            Err(ref er) if er.description == ~"Unexpected EOF" => {
+            Err(ref er) if er.description.starts_with("Unexpected EOF") => {
                 // it's not invalid yet, just haven't got enough
                 // input, so wait for more
                 true
